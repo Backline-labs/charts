@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adot-config
+  namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+      filelog:
+        include:
+          - {{ printf "%s/*.log" (include "logging.dir" .) | quote }}
+        include_file_path: true
+        operators:
+          - type: container
+          - if: body matches "^\\s*\\{"
+            type: json_parser
+        start_at: end
+    processors:
+      # Align with SaaS collector: prepare for future placeholder support by adding service.name
+      resource:
+        attributes:
+          - action: insert
+            from_attribute: k8s.container.name
+            key: service.name
+    extensions:
+      sigv4auth:
+        region: "us-east-1"
+        service: aps
+    exporters:
+      awscloudwatchlogs:
+        log_group_name: "/backline/onprem"
+        log_stream_name: "${env:LOG_STREAM_NAME}"
+        log_retention: 30
+      awsxray:
+        region: {{ .Values.logging.region | quote }}
+      prometheusremotewrite:
+        endpoint: "https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-e511ab36-d361-43fe-a8f0-450ca87e0655/api/v1/remote_write"
+        auth:
+          authenticator: sigv4auth
+    service:
+      extensions: [sigv4auth]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: []
+          exporters: [awsxray]
+        logs:
+          receivers: [filelog]
+          processors: [resource]
+          exporters: [awscloudwatchlogs]
+        metrics:
+          receivers: [otlp]
+          processors: []
+          exporters: [prometheusremotewrite]
+
