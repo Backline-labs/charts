@@ -1,0 +1,52 @@
+{{- define "backline.rawCoderJobSpec" -}}
+activeDeadlineSeconds: 3600
+backoffLimit: 0
+template:
+  metadata:
+    labels: {} # Auto filled
+  spec:
+    restartPolicy: Never
+    securityContext:
+      {{- include "common.podSecurityContext" . | nindent 6 }}
+      allowPrivilegeEscalation: false
+    containers:
+      {{- include "adot.sidecar" . | nindent 6 }}
+      - name: coder
+        image: backline-ai/coder:latest
+        imagePullPolicy: IfNotPresent
+        command:
+          - "/bin/sh"
+          - "-c"
+        args: [] # Auto filled
+        env: [] # Auto filled
+        volumeMounts:
+          {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 10 }}
+          - name: shared-storage
+            mountPath: /worker-storage/data
+          - name: home-volume
+            mountPath: /home/app_user
+          - name: tmp-volume
+            mountPath: /tmp
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 8Gi
+    volumes:
+      {{- include "adot.volumes" . | nindent 6 }}
+      - name: shared-storage
+        persistentVolumeClaim:
+          claimName: {{ .Values.worker.storage.pvc.name }}
+      - name: home-volume
+        emptyDir: {}
+      - name: tmp-volume
+        emptyDir: {}
+{{- end -}}
+
+{{- define "backline.coderJobSpec" -}}
+{{ include "backline.rawCoderJobSpec" . | fromYaml | toJson }}
+{{- end -}}
+
+

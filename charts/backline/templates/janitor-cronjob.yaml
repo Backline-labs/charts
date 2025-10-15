@@ -1,0 +1,243 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: janitor
+  namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+spec:
+  schedule: {{ $.Values.janitor.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: janitor
+          restartPolicy: OnFailure
+          containers:
+          - name: janitor
+            image: {{ $.Values.janitor.image.registry }}/{{ $.Values.janitor.image.name }}:{{ $.Values.janitor.image.tag }}
+            imagePullPolicy: {{ $.Values.janitor.image.pullPolicy }}
+            resources:
+              {{- toYaml .Values.janitor.resources | nindent 14 }}
+            env:
+            - name: ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: accesskey
+                  key: ACCESS_KEY
+            - name: CURL_CA_BUNDLE
+              value: /etc/ssl/certs/ca-certificates.crt
+            command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+
+              LOG_DIR={{ include "logging.dir" . }}
+              LOG_FILE="$LOG_DIR/janitor.log"
+              mkdir -p "$LOG_DIR"
+              {
+
+              NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+              JWT_SECRET={{ include "secretname.sessionjwt" . }}
+              DOCKERCONFIG_SECRET={{ include "secretname.dockerconfig" . }}
+              JWT_MAX_AGE_MINUTES=5
+              DOCKERCONFIG_MAX_AGE_HOURS=8
+
+              now_epoch() {
+                date -u +%s
+              }
+
+              get_secret_updated_epoch() {
+                # $1 = secret name
+                if ! kubectl -n "$NAMESPACE" get secret "$1" >/dev/null 2>&1; then
+                  echo 0
+                  return 0
+                fi
+                json=$(kubectl -n "$NAMESPACE" get secret "$1" -o json)
+                annot=$(echo "$json" | jq -r '.metadata.annotations["backline.ai/updatedAt"] // empty')
+                if [ -n "$annot" ] && echo "$annot" | grep -Eq '^[0-9]+$'; then
+                  echo "$annot"
+                  return 0
+                fi
+                # No annotation found; force refresh
+                echo 0
+              }
+
+              needs_refresh_minutes() {
+                # $1 = secret name, $2 = max age minutes
+                last=$(get_secret_updated_epoch "$1")
+                now=$(now_epoch)
+                max_age_sec=$(( $2 * 60 ))
+                age=$(( now - last ))
+                if [ "$last" -eq 0 ] || [ "$age" -ge "$max_age_sec" ]; then
+                  return 0
+                else
+                  return 1
+                fi
+              }
+
+              needs_refresh_hours() {
+                # $1 = secret name, $2 = max age hours
+                last=$(get_secret_updated_epoch "$1")
+                now=$(now_epoch)
+                max_age_sec=$(( $2 * 3600 ))
+                age=$(( now - last ))
+                if [ "$last" -eq 0 ] || [ "$age" -ge "$max_age_sec" ]; then
+                  return 0
+                else
+                  return 1
+                fi
+              }
+
+              annotate_now() {
+                # $1 = secret name
+                kubectl -n "$NAMESPACE" annotate secret "$1" backline.ai/updatedAt="$(now_epoch)" --overwrite >/dev/null
+              }
+
+              http_request() {
+                method="$1"
+                url="$2"
+                shift 2
+                echo "HTTP request: $method $url"
+                tmpfile=$(mktemp)
+                HTTP_STATUS=$(curl -sS -X "$method" "$url" "$@" -o "$tmpfile" -w "%{http_code}")
+                HTTP_BODY=$(cat "$tmpfile")
+                rm -f "$tmpfile"
+              }
+
+              echo "[1/4] JWT refresh check"
+              if needs_refresh_minutes "$JWT_SECRET" "$JWT_MAX_AGE_MINUTES"; then
+                echo "Refreshing JWT secret $JWT_SECRET"
+                if [ -z "${ACCESS_KEY:-}" ]; then echo "accessKey missing"; exit 1; fi
+                http_request POST "{{ $.Values.baseUrl }}/api/adapter/v1/exchange" -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "client_secret=$ACCESS_KEY"
+                if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then echo "failed to obtain jwt ($HTTP_STATUS): $HTTP_BODY"; exit 1; fi
+                JWT=$(echo "$HTTP_BODY" | jq -r '.access_token // empty')
+                if [ -z "$JWT" ]; then echo "failed to parse jwt: $HTTP_BODY"; exit 1; fi
+                kubectl -n "$NAMESPACE" create secret generic "$JWT_SECRET" \
+                  --from-literal=token="$JWT" \
+                  --dry-run=client -o yaml | kubectl apply -f -
+                annotate_now "$JWT_SECRET"
+              else
+                echo "JWT secret is fresh; skipping refresh"
+              fi
+
+              echo "[2/4] Dockerconfig refresh check"
+              # Load JWT value either from earlier refresh or from existing secret
+              if [ -z "${JWT:-}" ]; then
+                if kubectl -n "$NAMESPACE" get secret "$JWT_SECRET" >/dev/null 2>&1; then
+                  JWT=$(kubectl -n "$NAMESPACE" get secret "$JWT_SECRET" -o jsonpath='{.data.token}' | base64 -d || true)
+                fi
+              fi
+              if [ -z "${JWT:-}" ]; then echo "jwt missing"; exit 1; fi
+
+              if needs_refresh_hours "$DOCKERCONFIG_SECRET" "$DOCKERCONFIG_MAX_AGE_HOURS"; then
+                echo "Refreshing dockerconfig secret $DOCKERCONFIG_SECRET"
+                http_request GET "{{ $.Values.baseUrl }}/api/adapter/v1/ecr/dockerconfig" -H "Authorization: Bearer $JWT"
+                if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then echo "failed to obtain dockerconfig ($HTTP_STATUS): $HTTP_BODY"; exit 1; fi
+                DOCKERCONFIG="$HTTP_BODY"
+                if [ -z "$DOCKERCONFIG" ]; then echo "failed to parse dockerconfig: $HTTP_BODY"; exit 1; fi
+                echo "$DOCKERCONFIG" | base64 -d > /tmp/config.json || echo "$DOCKERCONFIG" > /tmp/config.json
+                kubectl -n "$NAMESPACE" create secret generic "$DOCKERCONFIG_SECRET" \
+                  --type=kubernetes.io/dockerconfigjson \
+                  --from-file=.dockerconfigjson=/tmp/config.json \
+                  --dry-run=client -o yaml | kubectl apply -f -
+                annotate_now "$DOCKERCONFIG_SECRET"
+              else
+                echo "Dockerconfig secret is fresh; ensuring we have a local config.json"
+                kubectl -n "$NAMESPACE" get secret "$DOCKERCONFIG_SECRET" -o json | jq -r '.data[".dockerconfigjson"]' | base64 -d > /tmp/config.json
+              fi
+
+              echo "[3/4] LOG_STREAM_NAME updater from JWT dct"
+              # Ensure JWT value available
+              if [ -z "${JWT:-}" ]; then
+                if kubectl -n "$NAMESPACE" get secret "$JWT_SECRET" >/dev/null 2>&1; then
+                  JWT=$(kubectl -n "$NAMESPACE" get secret "$JWT_SECRET" -o jsonpath='{.data.token}' | base64 -d || true)
+                fi
+              fi
+              if [ -z "${JWT:-}" ]; then echo "jwt missing for dct extraction"; exit 1; fi
+
+              # Extract dct claim without verifying signature (trusted from server)
+              # jwt format: header.payload.signature (base64url)
+              PAYLOAD=$(echo "$JWT" | awk -F'.' '{print $2}')
+              if [ -z "$PAYLOAD" ]; then echo "invalid jwt payload"; exit 1; fi
+              # base64url decode: convert base64url to base64, then decode
+              # Add proper padding: base64 strings must be multiple of 4 chars
+              PADDED=$(echo "$PAYLOAD" | sed 's/-/+/g; s/_/\//g')
+              case $(( ${#PADDED} % 4 )) in
+                2) PADDED="${PADDED}==" ;;
+                3) PADDED="${PADDED}=" ;;
+              esac
+              DECODED=$(echo "$PADDED" | base64 -d 2>/dev/null) || true
+              if [ -z "$DECODED" ]; then echo "failed to decode jwt payload"; DCT=""; else
+                DCT=$(echo "$DECODED" | jq -r '.dct // empty' 2>/dev/null) || true
+              fi
+              if [ -z "$DCT" ] || [ "$DCT" = "null" ]; then echo "dct claim not found"; DCT=""; fi
+              # Sanitize for CWL restrictions (no colon or asterisk)
+              DCT=$(echo "$DCT" | tr -d ':' | tr -d '*')
+
+              # Update worker ConfigMap LOG_STREAM_NAME if changed
+              CM_JSON=$(kubectl -n "$NAMESPACE" get configmap worker -o json)
+              CURRENT=$(echo "$CM_JSON" | jq -r '.data.LOG_STREAM_NAME // empty')
+              if [ "$CURRENT" != "$DCT" ]; then
+                echo "Updating worker ConfigMap LOG_STREAM_NAME to $DCT"
+                echo "$CM_JSON" | jq --arg v "$DCT" '.data.LOG_STREAM_NAME = $v' | kubectl apply -f -
+                cm_changed=1
+              else
+                echo "LOG_STREAM_NAME already up-to-date ($CURRENT)"
+                cm_changed=0
+              fi
+
+              echo "[4/4] Worker image updater"
+              NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+              DEPLOYMENT_NAME=worker
+              CONTAINER_NAME=worker
+              REGISTRY={{ $.Values.worker.image.registry }}
+              REPOSITORY={{ $.Values.worker.image.name }}
+
+              CONFIG_PATH=/tmp/config.json
+              if [ ! -s "$CONFIG_PATH" ]; then echo "dockerconfig not available"; exit 1; fi
+
+              AUTH=$(jq -r --arg host "$REGISTRY" '.auths[$host].auth // empty' "$CONFIG_PATH")
+              if [ -z "$AUTH" ]; then
+                AUTH=$(jq -r '.auths | to_entries[0].value.auth // empty' "$CONFIG_PATH")
+              fi
+              if [ -z "$AUTH" ]; then echo "registry auth not found in dockerconfig"; exit 1; fi
+
+              CURRENT_IMAGE=$(kubectl -n "$NAMESPACE" get deployment "$DEPLOYMENT_NAME" -o jsonpath='{.spec.template.spec.containers[?(@.name=="'"$CONTAINER_NAME"'")].image}')
+              CURRENT_TAG=${CURRENT_IMAGE##*:}
+              if [ -z "$CURRENT_TAG" ]; then echo "failed to resolve current tag"; exit 1; fi
+
+              http_request GET "https://$REGISTRY/v2/$REPOSITORY/tags/list" -H "Authorization: Basic $AUTH"
+              TAGS_JSON="$HTTP_BODY"
+              if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ] || [ -z "$TAGS_JSON" ] || [ "$(echo "$TAGS_JSON" | jq -r '.errors? // empty')" != "" ]; then
+                echo "failed to list tags ($HTTP_STATUS): $TAGS_JSON"; exit 1;
+              fi
+
+              NEW_TAG=$(echo "$TAGS_JSON" | jq -r '[.tags[] | select(test("-[0-9]+$")) | {tag: ., ticks: (capture("(?<ticks>[0-9]+)$").ticks | tonumber)}] | if length==0 then "" else (max_by(.ticks).tag) end')
+              if [ -z "$NEW_TAG" ]; then echo "no tags with ticks suffix found"; exit 0; fi
+
+              if [ "$NEW_TAG" = "$CURRENT_TAG" ] && [ "${cm_changed:-0}" -eq 0 ]; then
+                echo "worker image already at latest tag: $CURRENT_TAG and no config change"; exit 0;
+              fi
+
+              CURRENT_TICKS=${CURRENT_TAG##*-}
+              NEW_TICKS=${NEW_TAG##*-}
+              if ! echo "$CURRENT_TICKS" | grep -Eq '^[0-9]+$'; then echo "current tag ($CURRENT_TAG) does not have numeric ticks; skipping"; exit 0; fi
+              if ! echo "$NEW_TICKS" | grep -Eq '^[0-9]+$'; then echo "discovered tag ($NEW_TAG) missing numeric ticks; skipping"; exit 0; fi
+              if [ "$NEW_TICKS" -le "$CURRENT_TICKS" ]; then
+                echo "discovered tag ($NEW_TAG) not newer by ticks than current ($CURRENT_TAG); skipping"; exit 0;
+              fi
+
+              NEW_IMAGE="$REGISTRY/$REPOSITORY:$NEW_TAG"
+              if [ "$NEW_TAG" != "$CURRENT_TAG" ]; then
+                echo "Updating $DEPLOYMENT_NAME container $CONTAINER_NAME to $NEW_IMAGE"
+                kubectl -n "$NAMESPACE" set image deployment/$DEPLOYMENT_NAME $CONTAINER_NAME="$NEW_IMAGE"
+                cm_changed=1
+              fi
+              if [ "${cm_changed:-0}" -eq 1 ]; then
+                echo "Restarting $DEPLOYMENT_NAME to pick up ConfigMap change"
+                kubectl -n "$NAMESPACE" rollout restart deployment "$DEPLOYMENT_NAME"
+              fi
+              } 2>&1 | tee -a "$LOG_FILE"
