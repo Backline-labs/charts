@@ -10,7 +10,6 @@ janitor:
     name: dtzar/helm-kubectl
     tag: 3.16.1
     pullPolicy: IfNotPresent
-  schedule: "* * * * *" # every 1 minute => change to every 3 minutes?
   resources:
     requests:
       cpu: "100m"
@@ -29,6 +28,7 @@ worker:
     pullPolicy: IfNotPresent
   service:
     httpPort: 8080
+  modelName: "anthropic/claude-sonnet-4-20250514"
   resources:
     requests:
       cpu: "500m"
@@ -48,9 +48,6 @@ worker:
       port: 8080
     initialDelaySeconds: 5
     periodSeconds: 3
-  env:
-    - name: MODEL_NAME
-      value: "anthropic/claude-sonnet-4-20250514"
   storage:
     pvc:
       create: true
@@ -67,4 +64,4 @@ worker:
 
 logging:
   region: "us-west-1"
-  roleArn: "arn:aws:iam::580550010989:role/OnPremOtelShipRole"
+  environment: "staging"

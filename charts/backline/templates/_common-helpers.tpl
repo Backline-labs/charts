@@ -8,8 +8,8 @@
 {{- if not .Values.logging.region }}
   {{- fail "logging.region is required. Please set it in values.yaml or with --set logging.region=<value>" }}
 {{- end }}
-{{- if not .Values.logging.roleArn }}
-  {{- fail "logging.roleArn is required. Please set it in values.yaml or with --set logging.roleArn=<value>" }}
+{{- if not .Values.logging.environment }}
+  {{- fail "logging.environment is required. Please set it in values.yaml or with --set logging.environment=<value>" }}
 {{- end }}
 {{- end -}}
 
@@ -59,7 +59,7 @@
     - name: AWS_WEB_IDENTITY_TOKEN_FILE
       value: "/var/run/descope/session.jwt"
     - name: AWS_ROLE_ARN
-      value: {{ .Values.logging.roleArn | quote }}
+      value: {{ include "logging.roleArn" . | quote }}
     - name: AWS_REGION
       value: {{ .Values.logging.region | quote }}
     - name: LOG_STREAM_NAME
@@ -95,4 +95,12 @@ fsGroupChangePolicy: OnRootMismatch
 
 {{- define "logging.dir" -}}
 {{ printf "/var/log/backline" }}
+{{- end -}}
+
+{{- define "logging.roleArn" -}}
+{{- if eq .Values.logging.environment "production" -}}
+arn:aws:iam::314146328431:role/OnPremOtelShipRole
+{{- else -}}
+arn:aws:iam::580550010989:role/OnPremOtelShipRole
+{{- end -}}
 {{- end -}}
