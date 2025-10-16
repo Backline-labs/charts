@@ -3,6 +3,16 @@ entries:
   backline:
   - apiVersion: v2
     appVersion: 1.0.0
+    created: "2025-10-16T14:55:56.39448162Z"
+    description: Backline on-prem stack
+    digest: 86dc6f5781cc2e5952b7e92091b00a5ccc2962fdad5aedff9be8a9802c766c50
+    name: backline
+    type: application
+    urls:
+    - https://github.com/Backline-labs/charts/releases/download/backline-0.1.1/backline-0.1.1.tgz
+    version: 0.1.1
+  - apiVersion: v2
+    appVersion: 1.0.0
     created: "2025-10-15T11:34:43.990168446Z"
     description: Backline on-prem stack
     digest: a467f2cd835054992f192fb3133cd357fd3a5b1462eb6b0e57ef9ab209e940ac
@@ -11,4 +21,4 @@ entries:
     urls:
     - https://github.com/Backline-labs/charts/releases/download/backline-0.1.0/backline-0.1.0.tgz
     version: 0.1.0
-generated: "2025-10-15T11:34:43.990177914Z"
+generated: "2025-10-16T14:55:56.394490316Z"
