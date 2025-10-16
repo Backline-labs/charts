@@ -4,7 +4,7 @@ metadata:
   name: janitor
   namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
 spec:
-  schedule: {{ $.Values.janitor.schedule | quote }}
+  schedule: "* * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 1
@@ -42,7 +42,7 @@ spec:
               NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
               JWT_SECRET={{ include "secretname.sessionjwt" . }}
               DOCKERCONFIG_SECRET={{ include "secretname.dockerconfig" . }}
-              JWT_MAX_AGE_MINUTES=5
+              JWT_MAX_AGE_MINUTES=3
               DOCKERCONFIG_MAX_AGE_HOURS=8
 
               now_epoch() {

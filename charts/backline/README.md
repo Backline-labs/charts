@@ -1,13 +1,76 @@
 # Backline Helm Chart
 
-![Backline](backline.svg)
-
 ## Overview
+The Backline Helm chart deploys the on-premises Backline AI stack to your Kubernetes cluster.
+```mermaid
+graph TB
+  subgraph BC["Backline Cloud (AWS)"]
+      BP["Backline Platform"]
+      AWB["AWS Bedrock"]
+      BP --> AWB
+  end
+  subgraph CN["Customer Network"]
+      subgraph KC["Kubernetes Cluster"]
+          BAP["Backline Agent Proxy (Deployment)"]
+          AJJR["AI Agents Job Runner"]
+          BAP -->|Launch Jobs| AJJR
+      end
+  end
+    
+  SCM["Source Code Manager<br/>(GH, GitLab, Bitbucket)"]
+  PM["Package Manager<br/>(npm, goproxy, maven,<br/>pip, etc.)"]
+  
+  BAP <-->|HTTPS| BP
+  AJJR --> SCM
+  AJJR --> PM
+```
 
-The Backline Helm chart deploys the Backline on-premises stack to your Kubernetes cluster. 
-
-**Chart Version:** 0.1.0  
+**Chart Version:** 0.1.1
 **App Version:** 1.0.0
+
+## Table of Contents
+
+- [Backline Helm Chart](#backline-helm-chart)
+  - [Overview](#overview)
+  - [Table of Contents](#table-of-contents)
+  - [Prerequisites](#prerequisites)
+  - [Architecture](#architecture)
+  - [Installation](#installation)
+    - [Quick Start](#quick-start)
+    - [Installation with Custom Values File](#installation-with-custom-values-file)
+  - [Configuration Parameters](#configuration-parameters)
+    - [Global Configuration](#global-configuration)
+    - [Janitor Configuration](#janitor-configuration)
+    - [Worker Configuration](#worker-configuration)
+      - [Worker Storage Configuration](#worker-storage-configuration)
+      - [Worker OpenTelemetry Configuration](#worker-opentelemetry-configuration)
+    - [Logging Configuration](#logging-configuration)
+  - [Storage Requirements](#storage-requirements)
+  - [Secret Management](#secret-management)
+    - [Static Secrets](#static-secrets)
+    - [Dynamic Secrets](#dynamic-secrets)
+    - [Troubleshooting Secret Issues](#troubleshooting-secret-issues)
+  - [Configuration Examples](#configuration-examples)
+    - [Minimal Installation](#minimal-installation)
+    - [Advanced Configuration](#advanced-configuration)
+  - [Upgrading](#upgrading)
+  - [Uninstallation](#uninstallation)
+  - [Troubleshooting](#troubleshooting)
+    - [PVC Not Mounting](#pvc-not-mounting)
+    - [Worker Pod Not Starting](#worker-pod-not-starting)
+    - [Janitor Job Failing](#janitor-job-failing)
+    - [Image Pull Errors](#image-pull-errors)
+  - [Support](#support)
+
+## Prerequisites
+
+- Kubernetes 1.19+
+- Helm 3.x
+- A storage class that supports `ReadWriteMany` (RWX) access mode (e.g., NFS, EFS, CephFS)
+- External network access to:
+  - Backline AI SaaS endpoint
+  - Source code management systems (GitHub, GitLab, Bitbucket)
+  - Package managers (npm, Go modules, Maven, pip, etc.)
 
 ## Architecture
 
@@ -15,14 +78,9 @@ The chart deploys the following components:
 
 - **Worker**: Main application handling code analysis workloads, AI interactions, and job orchestration
 - **Janitor**: CronJob that performs automated maintenance tasks including JWT token refresh, Docker registry authentication updates, and worker image updates
-- **ADOT Collector**: Sidecar container for exporting logs and traces to AWS CloudWatch and X-Ray
-
-## Prerequisites
-
-- Kubernetes 1.19+
-- Helm 3.x
-- A storage class that supports `ReadWriteMany` (RWX) access mode (e.g., NFS, EFS, CephFS)
-- (Optional) AWS credentials with permissions for CloudWatch Logs and X-Ray for observability
+- **ADOT Collector**: Sidecar container for exporting logs, traces, and metrics to Backline AI cloud infrastructure.
+- **Coder Jobs**: Dynamically created Kubernetes Jobs for code execution (template embedded in worker ConfigMap)
+- **Dependabot Upgrader Jobs**: Dynamically created Kubernetes Jobs for dependency updates (template embedded in worker ConfigMap)
 
 ## Installation
 
@@ -31,12 +89,16 @@ The chart deploys the following components:
 Install the chart with required values:
 
 ```bash
-helm install backline ./backline \
-  --set accessKey="<your-access-key>" \
-  --set baseUrl="https://your-instance.backline.ai" \
-  --set logging.region="us-west-1" \
-  --set logging.roleArn="arn:aws:iam::123456789012:role/YourOtelRole" \
-  --create-namespace --namespace backline
+# install Backline helm repository
+helm repo add backline-ai https://backline-labs.github.io/charts
+helm repo update backline-ai
+# install the chart
+helm install backline \
+  backline-ai/backline \
+  --namespace backline \
+  --version 0.1.1 \
+  --create-namespace \
+  --set accessKey='<YOUR ACCESS KEY>'
 ```
 
 ### Installation with Custom Values File
@@ -51,7 +113,7 @@ accessKey: "your-secret-access-key"
 Install using the custom values:
 
 ```bash
-helm install backline ./backline \
+helm install backline backline-ai/backline \
   --values custom-values.yaml \
   --namespace backline
 ```
@@ -62,15 +124,15 @@ helm install backline ./backline \
 
 | Parameter | Description | Required | Default |
 |-----------|-------------|----------|---------|
-| `baseUrl` | Backline SaaS endpoint URL | Yes | `https://staging-app.backline.ai` |
+| `baseUrl` | Backline AI SaaS endpoint URL | Yes | `https://staging-app.backline.ai` |
 | `accessKey` | Authentication key for API access | Yes | `""` |
 | `namespaceOverride` | Override the default namespace | No | `backline` |
-| `logging.region` | AWS region for CloudWatch and X-Ray | Yes | `""` |
-| `logging.roleArn` | IAM role ARN for log shipping | Yes | `""` |
+| `logging.region` | AWS region for CloudWatch and X-Ray | Yes | `us-west-1` |
+| `logging.environment` | Backline AI SasS endpoint environment (`staging` or `production`) | Yes | `staging` |
 
 ### Janitor Configuration
 
-The Janitor component runs periodic maintenance tasks.
+The Janitor component runs periodic maintenance tasks as a CronJob.
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
@@ -78,7 +140,6 @@ The Janitor component runs periodic maintenance tasks.
 | `janitor.image.name` | Image name | `dtzar/helm-kubectl` |
 | `janitor.image.tag` | Image tag | `3.16.1` |
 | `janitor.image.pullPolicy` | Image pull policy | `IfNotPresent` |
-| `janitor.schedule` | CronJob schedule (cron format) | `* * * * *` (every minute) |
 | `janitor.resources.requests.cpu` | CPU request | `100m` |
 | `janitor.resources.requests.memory` | Memory request | `128Mi` |
 | `janitor.resources.limits.cpu` | CPU limit | `200m` |
@@ -103,6 +164,7 @@ The Worker is the main application component.
 | `worker.livenessProbe` | Liveness probe configuration | See values.yaml |
 | `worker.readinessProbe` | Readiness probe configuration | See values.yaml |
 | `worker.env` | Additional environment variables | `[]` |
+| `worker.envFromSecrets` | List of secrets to inject as environment variables | `[]` |
 | `worker.nodeSelector` | Node selector for pod assignment | `{}` |
 | `worker.tolerations` | Tolerations for pod assignment | `[]` |
 | `worker.affinity` | Affinity rules for pod assignment | `{}` |
@@ -125,12 +187,12 @@ The Worker is the main application component.
 
 ### Logging Configuration
 
-Configuration for AWS CloudWatch Logs and X-Ray integration.
+Configuration for AWS observability integration (CloudWatch Logs, X-Ray, and Amazon Managed Prometheus).
 
 | Parameter | Description | Required | Default |
 |-----------|-------------|----------|---------|
-| `logging.region` | AWS region for CloudWatch and X-Ray | Yes | `""` |
-| `logging.roleArn` | IAM role ARN for log shipping | Yes | `""` |
+| `logging.region` | AWS region for CloudWatch and X-Ray | Yes | `us-west-1` |
+| `logging.environment` | Environment name (`staging` or `production`) - determines Backline AI SaaS Endpoint environment | Yes | `staging` |
 
 ## Storage Requirements
 
@@ -148,23 +210,77 @@ The chart requires a PersistentVolume with `ReadWriteMany` (RWX) access mode. Th
 
 If your storage class doesn't support RWX, the pods will fail to mount the volume.
 
+## Secret Management
+
+The chart manages secrets automatically through the Janitor CronJob. Understanding this system is critical for troubleshooting authentication issues.
+
+### Static Secrets
+
+**`accesskey`** - Created during chart installation
+- Type: `Opaque`
+- Contains: `ACCESS_KEY` for API authentication
+- Source: Provided via `accessKey` in values.yaml
+- Lifecycle: Created once, not automatically updated
+
+### Dynamic Secrets
+
+The Janitor CronJob automatically creates and rotates the following secrets:
+
+**`session-jwt`** - JWT token for AWS authentication
+- Type: `Opaque`
+- Contains: `token` field with JWT from Backline API
+- Refresh frequency: Every 3 minutes
+- Usage: Used by ADOT collector for AWS service authentication (CloudWatch, X-Ray, AMP)
+- Annotation: `backline.ai/updatedAt` tracks last update timestamp (epoch seconds)
+
+**`dockerconfig`** - Docker registry credentials
+- Type: `kubernetes.io/dockerconfigjson`
+- Contains: ECR authentication credentials
+- Refresh frequency: Every 8 hours
+- Usage: Allows worker deployment to pull images from private ECR registry
+
+### Troubleshooting Secret Issues
+
+**ImagePullBackOff on worker pods:**
+- Wait for janitor to create/refresh the `dockerconfig` secret.
+- Manually trigger: `kubectl create job -n backline --from=cronjob/janitor janitor-manual`
+- Check janitor logs: `kubectl logs -n backline job/janitor-<timestamp>`
+
+**AWS authentication failures in ADOT collector:**
+- Verify `session-jwt` secret exists: `kubectl get secret -n backline session-jwt`
+- Check JWT expiration and refresh: `kubectl describe secret -n backline session-jwt`
+- Ensure `accessKey` is valid for the configured `baseUrl`
+
+**Manual secret inspection:**
+```bash
+# Check all secrets
+kubectl get secrets -n backline
+
+# View secret annotations and age
+kubectl describe secret -n backline session-jwt
+kubectl describe secret -n backline dockerconfig
+
+# Force janitor to run immediately
+kubectl create job -n backline --from=cronjob/janitor janitor-manual
+```
+
 ## Configuration Examples
 
 ### Minimal Installation
 
-Minimal `values.yaml` for testing:
+Minimal `values.yaml`:
 
 ```yaml
 baseUrl: "https://staging-app.backline.ai"
 accessKey: "your-secret-key"
 logging:
   region: "us-west-1"
-  roleArn: "arn:aws:iam::123456789012:role/YourOtelRole"
+  environment: "staging"
 ```
 
-### Production Configuration
+### Advanced Configuration
 
-Production-ready configuration with increased resources:
+Advanced configuration with increased resources:
 
 ```yaml
 baseUrl: "https://app.backline.ai"
@@ -172,7 +288,6 @@ accessKey: "your-secret-key"
 namespaceOverride: "backline-prod"
 
 janitor:
-  schedule: "*/3 * * * *"  # Every 3 minutes
   resources:
     requests:
       cpu: "200m"
@@ -199,56 +314,26 @@ worker:
 
 logging:
   region: "us-east-1"
-  roleArn: "arn:aws:iam::123456789012:role/BacklineProdOtelRole"
+  environment: "production"
 ```
 
-### Custom Worker Image
-
-Override the worker image for testing:
-
-```yaml
-baseUrl: "https://staging-app.backline.ai"
-accessKey: "your-secret-key"
-
-worker:
-  image:
-    registry: "my-registry.example.com"
-    name: "backline-worker"
-    tag: "test-feature-123"
-    pullPolicy: "Always"
-```
-
-### Disable Observability
-
-Run without AWS CloudWatch/X-Ray integration:
-
-```yaml
-baseUrl: "https://app.backline.ai"
-accessKey: "your-secret-key"
-logging:
-  region: "us-west-1"
-  roleArn: "arn:aws:iam::123456789012:role/YourOtelRole"
-
-worker:
-  otel:
-    enabled: false
-```
 
 ## Upgrading
 
 Upgrade an existing release with new values:
 
 ```bash
-helm upgrade backline ./backline \
+helm upgrade backline \
+  backline-ai/backline \
   --namespace backline \
-  --reuse-values \
-  --set worker.image.tag=new-version
+  --reuse-values
 ```
 
 Or with a values file:
 
 ```bash
-helm upgrade backline ./backline \
+helm upgrade backline \
+  backline-ai/backline \
   --namespace backline \
   --values updated-values.yaml
 ```
@@ -261,7 +346,7 @@ Remove the Helm release:
 helm uninstall backline --namespace backline
 ```
 
-**Note:** The PersistentVolumeClaim may not automatically deleted if not created by the chart
+**Note:** The PersistentVolumeClaim may not be automatically deleted if not created by the chart
 
 ## Troubleshooting
 
@@ -305,7 +390,6 @@ kubectl logs -n backline job/janitor-<timestamp> -c janitor
 - Common issues:
   - Invalid `accessKey`: Verify the key is correct
   - Network connectivity: Ensure the janitor can reach `baseUrl`
-  - RBAC permissions: Verify the janitor ServiceAccount has proper permissions
 
 ### Image Pull Errors
 
@@ -319,31 +403,6 @@ kubectl logs -n backline job/janitor-<timestamp> -c janitor
 ```bash
 kubectl create job -n backline --from=cronjob/janitor janitor-manual
 ```
-
-### Logs Not Appearing in CloudWatch
-
-**Symptom:** No logs in AWS CloudWatch Logs.
-
-**Solution:**
-- Verify the `logging.roleArn` IAM role exists and has permissions
-- Check ADOT collector logs:
-
-```bash
-kubectl logs -n backline deployment/worker -c adot-collector
-```
-
-- Ensure the JWT token is being created by the janitor
-- Verify AWS region in `logging.region` is correct
-
-## Notes
-
-- The chart automatically creates Kubernetes secrets for JWT tokens and Docker registry authentication via the janitor component
-- The janitor runs periodically to refresh credentials and automatically updates the worker image to the latest version
-- The ADOT sidecar ships logs to AWS CloudWatch Logs and traces to AWS X-Ray (when enabled)
-- All components run with security contexts enforcing non-root users and read-only root filesystems where possible
-- The worker can dynamically create Kubernetes Jobs for code execution (Coder) and dependency updates (Dependabot upgrader)
-
 ## Support
 
 For issues, questions, or feature requests, please contact Backline support or refer to the official documentation.
-

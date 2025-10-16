@@ -30,10 +30,13 @@ data:
       sigv4auth:
         region: "us-east-1"
         service: aps
+        assume_role:
+          arn: "arn:aws:iam::314146328431:role/amp-ingest"
+          session_name: "onprem-adot-amp-write"
     exporters:
       awscloudwatchlogs:
         log_group_name: "/backline/onprem"
-        log_stream_name: "${env:LOG_STREAM_NAME}"
+        log_stream_name: "${env:LOG_STREAM_NAME}-logs"
         log_retention: 30
       awsxray:
         region: {{ .Values.logging.region | quote }}

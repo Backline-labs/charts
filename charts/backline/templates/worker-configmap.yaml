@@ -4,6 +4,7 @@ metadata:
   name: worker
   namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
 data:
+  MODEL_NAME: {{ .Values.worker.modelName | quote }}
   WITH_TELEMETRY: {{ .Values.worker.otel.enabled | quote }}
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
   OTEL_EXPORTER_OTLP_HOST: "localhost"
