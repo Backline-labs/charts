@@ -54,7 +54,7 @@ graph TB
     - [Minimal Installation](#minimal-installation)
     - [Advanced Configuration](#advanced-configuration)
   - [Upgrading](#upgrading)
-  - [Uninstallation](#uninstallation)
+  - [Uninstall](#uninstall)
   - [Troubleshooting](#troubleshooting)
     - [PVC Not Mounting](#pvc-not-mounting)
     - [Worker Pod Not Starting](#worker-pod-not-starting)
@@ -338,7 +338,7 @@ helm upgrade backline \
   --values updated-values.yaml
 ```
 
-## Uninstallation
+## Uninstall
 
 Remove the Helm release:
 
@@ -405,4 +405,4 @@ kubectl create job -n backline --from=cronjob/janitor janitor-manual
 ```
 ## Support
 
-For issues, questions, or feature requests, please contact Backline support or refer to the official documentation.
+For issues, questions, or feature requests, please contact [Backline support](mailto:support@backline.ai).

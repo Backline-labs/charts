@@ -5,6 +5,8 @@ metadata:
   namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
   labels:
     app: worker
+  annotations:
+    checksum/config: {{(include (print $.Template.BasePath "/worker-configmap.yaml") . | sha256sum) | quote }}
 spec:
   replicas: {{ .Values.worker.replicaCount }}
   selector:
