@@ -193,7 +193,7 @@ spec:
               NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
               DEPLOYMENT_NAME=worker
               CONTAINER_NAME=worker
-              REGISTRY={{ $.Values.worker.image.registry }}
+              REGISTRY={{ include "worker.image.registry" . }}
               REPOSITORY={{ $.Values.worker.image.name }}
 
               CONFIG_PATH=/tmp/config.json
