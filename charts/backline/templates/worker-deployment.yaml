@@ -24,7 +24,7 @@ spec:
       {{- include "common.podSecurityContext" . | nindent 8 }}
       containers:
         - name: worker
-          image: "{{ .Values.worker.image.registry }}/{{ .Values.worker.image.name }}:{{ .Values.worker.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "worker.image.registry" . }}/{{ .Values.worker.image.name }}:{{ .Values.worker.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
           ports:
             - name: http

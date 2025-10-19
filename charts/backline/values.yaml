@@ -22,7 +22,6 @@ janitor:
 worker:
   replicaCount: 1
   image:
-    registry: 580550010989.dkr.ecr.us-west-1.amazonaws.com
     name: prod-worker
     tag: "2faf8c5-1757332651"
     pullPolicy: IfNotPresent

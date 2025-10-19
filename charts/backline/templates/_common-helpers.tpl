@@ -104,3 +104,11 @@ arn:aws:iam::314146328431:role/OnPremOtelShipRole
 arn:aws:iam::580550010989:role/OnPremOtelShipRole
 {{- end -}}
 {{- end -}}
+
+{{- define "worker.image.registry" -}}
+{{- if eq .Values.logging.environment "staging" -}}
+580550010989.dkr.ecr.us-west-1.amazonaws.com
+{{- else -}}
+314146328431.dkr.ecr.us-west-1.amazonaws.com
+{{- end -}}
+{{- end -}}
