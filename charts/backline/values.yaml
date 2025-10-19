@@ -1,6 +1,6 @@
 # Global configuration
-baseUrl: "https://staging-app.backline.ai"
 accessKey: ""
+environment: "staging"
 namespaceOverride: "backline"
 
 # Janitor component
@@ -61,6 +61,3 @@ worker:
     collector:
       image: public.ecr.aws/aws-observability/aws-otel-collector:v0.43.2
 
-logging:
-  region: "us-west-1"
-  environment: "staging"

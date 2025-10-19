@@ -111,7 +111,7 @@ spec:
               if needs_refresh_minutes "$JWT_SECRET" "$JWT_MAX_AGE_MINUTES"; then
                 echo "Refreshing JWT secret $JWT_SECRET"
                 if [ -z "${ACCESS_KEY:-}" ]; then echo "accessKey missing"; exit 1; fi
-                http_request POST "{{ $.Values.baseUrl }}/api/adapter/v1/exchange" -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "client_secret=$ACCESS_KEY"
+                http_request POST "{{ include "baseUrl" $ }}/api/adapter/v1/exchange" -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "client_secret=$ACCESS_KEY"
                 if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then echo "failed to obtain jwt ($HTTP_STATUS): $HTTP_BODY"; exit 1; fi
                 JWT=$(echo "$HTTP_BODY" | jq -r '.access_token // empty')
                 if [ -z "$JWT" ]; then echo "failed to parse jwt: $HTTP_BODY"; exit 1; fi
@@ -134,7 +134,7 @@ spec:
 
               if needs_refresh_hours "$DOCKERCONFIG_SECRET" "$DOCKERCONFIG_MAX_AGE_HOURS"; then
                 echo "Refreshing dockerconfig secret $DOCKERCONFIG_SECRET"
-                http_request GET "{{ $.Values.baseUrl }}/api/adapter/v1/ecr/dockerconfig" -H "Authorization: Bearer $JWT"
+                http_request GET "{{ include "baseUrl" $ }}/api/adapter/v1/ecr/dockerconfig" -H "Authorization: Bearer $JWT"
                 if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then echo "failed to obtain dockerconfig ($HTTP_STATUS): $HTTP_BODY"; exit 1; fi
                 DOCKERCONFIG="$HTTP_BODY"
                 if [ -z "$DOCKERCONFIG" ]; then echo "failed to parse dockerconfig: $HTTP_BODY"; exit 1; fi

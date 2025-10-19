@@ -44,7 +44,6 @@ graph TB
     - [Worker Configuration](#worker-configuration)
       - [Worker Storage Configuration](#worker-storage-configuration)
       - [Worker OpenTelemetry Configuration](#worker-opentelemetry-configuration)
-    - [Logging Configuration](#logging-configuration)
   - [Storage Requirements](#storage-requirements)
   - [Secret Management](#secret-management)
     - [Static Secrets](#static-secrets)
@@ -106,8 +105,8 @@ helm install backline \
 Create a `custom-values.yaml` file with your configuration:
 
 ```yaml
-baseUrl: "https://app.backline.ai"
 accessKey: "your-secret-access-key"
+environment: "production"
 ```
 
 Install using the custom values:
@@ -124,11 +123,9 @@ helm install backline backline-ai/backline \
 
 | Parameter | Description | Required | Default |
 |-----------|-------------|----------|---------|
-| `baseUrl` | Backline AI SaaS endpoint URL | Yes | `https://staging-app.backline.ai` |
 | `accessKey` | Authentication key for API access | Yes | `""` |
 | `namespaceOverride` | Override the default namespace | No | `backline` |
-| `logging.region` | AWS region for CloudWatch and X-Ray | Yes | `us-west-1` |
-| `logging.environment` | Backline AI SasS endpoint environment (`staging` or `production`) | Yes | `staging` |
+| `environment` | Backline AI SaaS endpoint environment (`staging` or `production`) | Yes | `staging` |
 
 ### Janitor Configuration
 
@@ -185,14 +182,7 @@ The Worker is the main application component.
 | `worker.otel.enabled` | Enable OpenTelemetry | `true` |
 | `worker.otel.collector.image` | Image used to run OTEL collector | `public.ecr.aws/aws-observability/aws-otel-collector:v0.43.2` |
 
-### Logging Configuration
-
-Configuration for AWS observability integration (CloudWatch Logs, X-Ray, and Amazon Managed Prometheus).
-
-| Parameter | Description | Required | Default |
-|-----------|-------------|----------|---------|
-| `logging.region` | AWS region for CloudWatch and X-Ray | Yes | `us-west-1` |
-| `logging.environment` | Environment name (`staging` or `production`) - determines Backline AI SaaS Endpoint environment | Yes | `staging` |
+ 
 
 ## Storage Requirements
 
@@ -249,7 +239,7 @@ The Janitor CronJob automatically creates and rotates the following secrets:
 **AWS authentication failures in ADOT collector:**
 - Verify `session-jwt` secret exists: `kubectl get secret -n backline session-jwt`
 - Check JWT expiration and refresh: `kubectl describe secret -n backline session-jwt`
-- Ensure `accessKey` is valid for the configured `baseUrl`
+- Ensure `accessKey` is valid for the resolved base URL (derived from `environment`)
 
 **Manual secret inspection:**
 ```bash
@@ -271,11 +261,8 @@ kubectl create job -n backline --from=cronjob/janitor janitor-manual
 Minimal `values.yaml`:
 
 ```yaml
-baseUrl: "https://staging-app.backline.ai"
 accessKey: "your-secret-key"
-logging:
-  region: "us-west-1"
-  environment: "staging"
+environment: "staging"
 ```
 
 ### Advanced Configuration
@@ -283,7 +270,6 @@ logging:
 Advanced configuration with increased resources:
 
 ```yaml
-baseUrl: "https://app.backline.ai"
 accessKey: "your-secret-key"
 namespaceOverride: "backline-prod"
 
@@ -312,9 +298,7 @@ worker:
     - name: MODEL_NAME
       value: "anthropic/claude-sonnet-4-20250514"
 
-logging:
-  region: "us-east-1"
-  environment: "production"
+environment: "production"
 ```
 
 
@@ -369,7 +353,7 @@ kubectl describe pvc worker-storage -n backline
 **Symptom:** Worker pod in `CrashLoopBackOff` or failing health checks.
 
 **Solution:**
-- Verify `accessKey` and `baseUrl` are correct
+- Verify `accessKey` and `environment` are correct.
 - Check worker logs for authentication errors:
 
 ```bash
@@ -389,7 +373,7 @@ kubectl logs -n backline job/janitor-<timestamp> -c janitor
 
 - Common issues:
   - Invalid `accessKey`: Verify the key is correct
-  - Network connectivity: Ensure the janitor can reach `baseUrl`
+  - Network connectivity: Ensure the janitor can reach the resolved base URL
 
 ### Image Pull Errors
 

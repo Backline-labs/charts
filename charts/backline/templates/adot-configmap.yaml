@@ -39,7 +39,7 @@ data:
         log_stream_name: "${env:LOG_STREAM_NAME}-logs"
         log_retention: 30
       awsxray:
-        region: {{ .Values.logging.region | quote }}
+        region: {{ include "region" . | quote }}
       prometheusremotewrite:
         endpoint: "https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-e511ab36-d361-43fe-a8f0-450ca87e0655/api/v1/remote_write"
         auth:
