@@ -12,9 +12,9 @@ data:
   LOG_FILE_ENABLED: {{true | quote}}
   LOG_FILE_PATH: {{ printf "%s/worker.log" (include "logging.dir" .) | quote }}
   LOG_STREAM_NAME: "" # Set by janitor
-  LITELLM_SERVICE_URL: {{ printf "%s/api/litellm/v1/proxy" .Values.baseUrl | quote }}
+  LITELLM_SERVICE_URL: {{ printf "%s/api/litellm/v1/proxy" (include "baseUrl" .) | quote }}
   ADAPTER_ENABLED: "true"
-  ADAPTER_BASE_URL: {{ printf "%s/api/adapter/v1" .Values.baseUrl | quote }}
+  ADAPTER_BASE_URL: {{ printf "%s/api/adapter/v1" (include "baseUrl" .) | quote }}
   DBOT_UPGRADER_NAMESPACE: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
   CODER_NAMESPACE: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
   CODER_JOB_SPEC: |

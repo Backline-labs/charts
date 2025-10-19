@@ -1,15 +1,9 @@
 {{- define "common.validateRequired" -}}
-{{- if not .Values.baseUrl }}
-  {{- fail "baseUrl is required. Please set it in values.yaml or with --set baseUrl=<value>" }}
-{{- end }}
 {{- if not .Values.accessKey }}
   {{- fail "accessKey is required. Please set it in values.yaml or with --set accessKey=<value>" }}
 {{- end }}
-{{- if not .Values.logging.region }}
-  {{- fail "logging.region is required. Please set it in values.yaml or with --set logging.region=<value>" }}
-{{- end }}
-{{- if not .Values.logging.environment }}
-  {{- fail "logging.environment is required. Please set it in values.yaml or with --set logging.environment=<value>" }}
+{{- if not .Values.environment }}
+  {{- fail "environment is required. Please set it in values.yaml or with --set environment=<value>" }}
 {{- end }}
 {{- end -}}
 
@@ -61,7 +55,7 @@
     - name: AWS_ROLE_ARN
       value: {{ include "logging.roleArn" . | quote }}
     - name: AWS_REGION
-      value: {{ .Values.logging.region | quote }}
+      value: {{ include "region" . | quote }}
     - name: LOG_STREAM_NAME
       valueFrom:
         configMapKeyRef:
@@ -98,9 +92,33 @@ fsGroupChangePolicy: OnRootMismatch
 {{- end -}}
 
 {{- define "logging.roleArn" -}}
-{{- if eq .Values.logging.environment "production" -}}
+{{- if eq .Values.environment "production" -}}
 arn:aws:iam::314146328431:role/OnPremOtelShipRole
 {{- else -}}
 arn:aws:iam::580550010989:role/OnPremOtelShipRole
+{{- end -}}
+{{- end -}}
+
+{{- define "worker.image.registry" -}}
+{{- if eq .Values.environment "staging" -}}
+580550010989.dkr.ecr.us-west-1.amazonaws.com
+{{- else -}}
+314146328431.dkr.ecr.us-east-1.amazonaws.com
+{{- end -}}
+{{- end -}}
+
+{{- define "region" -}}
+{{- if eq .Values.environment "staging" -}}
+us-west-1
+{{- else -}}
+us-east-1
+{{- end -}}
+{{- end -}}
+
+{{- define "baseUrl" -}}
+{{- if eq .Values.environment "production" -}}
+https://app.backline.ai
+{{- else -}}
+https://staging-app.backline.ai
 {{- end -}}
 {{- end -}}
