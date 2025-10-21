@@ -18,6 +18,8 @@ spec:
           - name: janitor
             image: {{ $.Values.janitor.image.registry }}/{{ $.Values.janitor.image.name }}:{{ $.Values.janitor.image.tag }}
             imagePullPolicy: {{ $.Values.janitor.image.pullPolicy }}
+            securityContext:
+              {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 14 }}
             resources:
               {{- toYaml .Values.janitor.resources | nindent 14 }}
             env:

@@ -122,3 +122,11 @@ https://app.backline.ai
 https://staging-app.backline.ai
 {{- end -}}
 {{- end -}}
+
+{{- define "common.containerSecurityContext" -}}
+allowPrivilegeEscalation: false
+readOnlyRootFilesystem: {{ if hasKey . "readOnlyRootFilesystem" }}{{ .readOnlyRootFilesystem }}{{ else }}false{{ end }}
+capabilities:
+  drop:
+    - ALL
+{{- end -}}
