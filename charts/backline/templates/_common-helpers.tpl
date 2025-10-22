@@ -62,9 +62,6 @@
           name: worker
           key: LOG_STREAM_NAME
   securityContext:
-    runAsNonRoot: false
-    runAsUser: 1020
-    runAsGroup: 1010
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
     capabilities:
@@ -81,6 +78,7 @@
 {{- end -}}
 
 {{- define "common.podSecurityContext" -}}
+runAsNonRoot: true
 runAsUser: 1020
 runAsGroup: 1010
 fsGroup: 1010
@@ -121,4 +119,12 @@ https://app.backline.ai
 {{- else -}}
 https://staging-app.backline.ai
 {{- end -}}
+{{- end -}}
+
+{{- define "common.containerSecurityContext" -}}
+allowPrivilegeEscalation: false
+readOnlyRootFilesystem: {{ if hasKey . "readOnlyRootFilesystem" }}{{ .readOnlyRootFilesystem }}{{ else }}false{{ end }}
+capabilities:
+  drop:
+    - ALL
 {{- end -}}

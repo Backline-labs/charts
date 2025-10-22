@@ -26,6 +26,8 @@ spec:
         - name: worker
           image: "{{ include "worker.image.registry" . }}/{{ .Values.worker.image.name }}:{{ .Values.worker.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          securityContext:
+            {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 12 }}
           ports:
             - name: http
               containerPort: {{ .Values.worker.service.httpPort }}

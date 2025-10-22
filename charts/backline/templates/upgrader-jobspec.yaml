@@ -5,16 +5,20 @@ template:
   metadata:
     labels: {} # Auto filled
   spec:
-    securityContext:
-      readOnlyRootFilesystem: true
-      privileged: false
-      capabilities:
-        drop:
-          - ALL
     restartPolicy: Never
+    securityContext:
+        privileged: false
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
     initContainers:
       - name: setup-shared-repo
         image: alpine/git:latest
+        securityContext:
+            capabilities:
+                drop:
+                    - ALL
+                add:
+                    - CHOWN
         command:
           - "/bin/sh"
           - "-c"
@@ -67,6 +71,12 @@ template:
       - name: dependabot-updater
         image: # Auto filled according to package manager
         imagePullPolicy: Always
+        securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            capabilities:
+                drop:
+                    - ALL
         command:
           - "/bin/sh"
           - "-c"
@@ -87,7 +97,7 @@ template:
     volumes:
       - name: shared-storage
         persistentVolumeClaim:
-          claimName: worker-storage
+          claimName: {{ .Values.worker.storage.pvc.name }}
       - name: repo
         emptyDir: {}
 {{- end -}}

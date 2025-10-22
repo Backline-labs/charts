@@ -8,10 +8,11 @@ template:
     restartPolicy: Never
     securityContext:
       {{- include "common.podSecurityContext" . | nindent 6 }}
-      allowPrivilegeEscalation: false
     containers:
       {{- include "adot.sidecar" . | nindent 6 }}
       - name: coder
+        securityContext:
+          {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" true) | nindent 10 }}
         image: backline-ai/coder:latest
         imagePullPolicy: IfNotPresent
         command:

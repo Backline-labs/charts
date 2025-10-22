@@ -1,6 +1,6 @@
 # Global configuration
 accessKey: ""
-environment: "staging"
+environment: "production"
 namespaceOverride: "backline"
 
 # Janitor component
@@ -50,7 +50,7 @@ worker:
   storage:
     pvc:
       create: true
-      storageClassName: ""  # Will use cluster default if empty
+      storageClassName: "" # Will use cluster default if empty
       size: "10Gi"
       name: "worker-storage"
   nodeSelector: {}
@@ -60,4 +60,3 @@ worker:
     enabled: true
     collector:
       image: public.ecr.aws/aws-observability/aws-otel-collector:v0.43.2
-
