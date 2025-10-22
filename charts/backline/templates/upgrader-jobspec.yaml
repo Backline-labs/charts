@@ -7,12 +7,21 @@ template:
   spec:
     restartPolicy: Never
     securityContext:
-      {{- include "common.podSecurityContext" . | nindent 6 }}
+        privileged: false
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
     initContainers:
       - name: setup-shared-repo
         image: alpine/git:latest
         securityContext:
-          {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 10 }}
+          allowPrivilegeEscalation: false
+          runAsNonRoot: false
+          runAsUser: 0
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - CHOWN
         command:
           - "/bin/sh"
           - "-c"
@@ -66,7 +75,11 @@ template:
         image: # Auto filled according to package manager
         imagePullPolicy: Always
         securityContext:
-          {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 10 }}
+            runAsUser: 1000
+            runAsGroup: 1000
+            capabilities:
+                drop:
+                - ALL
         command:
           - "/bin/sh"
           - "-c"
