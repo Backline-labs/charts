@@ -78,7 +78,7 @@
 {{- end -}}
 
 {{- define "common.podSecurityContext" -}}
-runAsNonRoot: false
+runAsNonRoot: true
 runAsUser: 1020
 runAsGroup: 1010
 fsGroup: 1010

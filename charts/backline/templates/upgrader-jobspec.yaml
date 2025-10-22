@@ -14,14 +14,11 @@ template:
       - name: setup-shared-repo
         image: alpine/git:latest
         securityContext:
-          allowPrivilegeEscalation: false
-          runAsNonRoot: false
-          runAsUser: 0
-          capabilities:
-            drop:
-              - ALL
-            add:
-              - CHOWN
+            capabilities:
+                drop:
+                    - ALL
+                add:
+                    - CHOWN
         command:
           - "/bin/sh"
           - "-c"
@@ -79,7 +76,7 @@ template:
             runAsGroup: 1000
             capabilities:
                 drop:
-                - ALL
+                    - ALL
         command:
           - "/bin/sh"
           - "-c"
