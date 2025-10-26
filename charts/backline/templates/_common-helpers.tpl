@@ -15,68 +15,6 @@
 {{ printf "session-jwt" | quote }}
 {{- end -}}
 
-{{- define "adot.volumes" -}}
-- name: adot-config
-  configMap:
-    name: adot-config
-- name: {{ include "secretname.sessionjwt" . }}
-  secret:
-    secretName: {{ include "secretname.sessionjwt" . }}
-- name: shared-logs
-  emptyDir: {}
-{{- end -}}
-
-{{- define "adot.logVolumeMount" -}}
-- name: shared-logs
-  mountPath: "/var/log/backline"
-  readOnly: {{ if hasKey . "readOnly" }}{{ .readOnly }}{{ else }}true{{ end }}
-{{- end -}}
-
-{{- define "adot.sidecar" -}}
-- name: adot-collector
-  image: {{ .Values.worker.otel.collector.image }}
-  args: ["--config=/etc/otel/config.yaml"]
-  ports:
-    - containerPort: 4317
-      name: otlp
-      protocol: TCP
-  env:
-    - name: ACCESS_KEY
-      valueFrom:
-        secretKeyRef:
-          name: accesskey
-          key: ACCESS_KEY
-    - name: POD_IP
-      valueFrom:
-        fieldRef:
-          fieldPath: status.podIP
-    - name: AWS_WEB_IDENTITY_TOKEN_FILE
-      value: "/var/run/descope/session.jwt"
-    - name: AWS_ROLE_ARN
-      value: {{ include "logging.roleArn" . | quote }}
-    - name: AWS_REGION
-      value: {{ include "region" . | quote }}
-    - name: LOG_STREAM_NAME
-      valueFrom:
-        configMapKeyRef:
-          name: worker
-          key: LOG_STREAM_NAME
-  securityContext:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop:
-        - ALL
-  volumeMounts:
-    {{- include "adot.logVolumeMount" . | nindent 4 }}
-    - name: adot-config
-      mountPath: /etc/otel/
-    - name: {{ include "secretname.sessionjwt" . }}
-      mountPath: "/var/run/descope/session.jwt"
-      subPath: token
-      readOnly: true
-{{- end -}}
-
 {{- define "common.podSecurityContext" -}}
 runAsNonRoot: true
 runAsUser: 1020
