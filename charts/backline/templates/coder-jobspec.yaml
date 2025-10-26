@@ -8,8 +8,9 @@ template:
     restartPolicy: Never
     securityContext:
       {{- include "common.podSecurityContext" . | nindent 6 }}
+    imagePullSecrets:
+        - name: {{ include "secretname.dockerconfig" . }}
     containers:
-      {{- include "adot.sidecar" . | nindent 6 }}
       - name: coder
         securityContext:
           {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" true) | nindent 10 }}
@@ -35,6 +36,7 @@ template:
           limits:
             cpu: 2000m
             memory: 8Gi
+      {{- include "adot.sidecar" . | nindent 6 }}
     volumes:
       {{- include "adot.volumes" . | nindent 6 }}
       - name: shared-storage
