@@ -60,9 +60,9 @@ spec:
                   name: accesskey
                   key: ACCESS_KEY
             - name: POD_IP
-                valueFrom:
-                    fieldRef:
-                    fieldPath: status.podIP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           volumeMounts:
             - mountPath: /worker-storage/data
               name: worker-storage
