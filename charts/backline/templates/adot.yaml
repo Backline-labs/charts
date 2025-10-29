@@ -1,5 +1,5 @@
 {{- define "adot.isK8sVersionGte129" -}}
-{{- if semverCompare ">=1.29.0" .Capabilities.KubeVersion.Version -}}
+{{- if semverCompare ">=1.29.0-0" .Capabilities.KubeVersion.Version }}
 true
 {{- end -}}
 {{- end -}}
@@ -22,9 +22,20 @@ true
 {{- end -}}
 
 {{- define "adot.sidecar" -}}
+{{- /*
+  For Jobs: only include sidecar on K8s 1.29+ where native sidecars are supported.
+  This prevents Jobs from hanging as the sidecar will auto-terminate when main container completes.
+  For Deployments: always include the sidecar regardless of K8s version.
+*/ -}}
+{{- $isJob := and (hasKey . "isJob") .isJob }}
+{{- $includeContainer := not $isJob }}
+{{- if $isJob }}
+  {{- $includeContainer = include "adot.isK8sVersionGte129" . }}
+{{- end }}
+{{- if $includeContainer }}
 - name: adot-collector
-  {{- if include "adot.isK8sVersionGte129" . }}
-  type: Sidecar
+  {{- if $isJob }}
+  restartPolicy: Always
   {{- end }}
   image: {{ .Values.worker.otel.collector.image }}
   args: ["--config=/etc/otel/config.yaml"]
@@ -67,5 +78,6 @@ true
       mountPath: "/var/run/descope/session.jwt"
       subPath: token
       readOnly: true
+{{- end }}
 {{- end -}}
 
