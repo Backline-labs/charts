@@ -16,9 +16,14 @@ template:
         securityContext:
             capabilities:
                 drop:
-                    - ALL
+                  - ALL
                 add:
-                    - CHOWN
+                  - CHOWN
+                  - DAC_OVERRIDE
+                  - FOWNER
+                  - DAC_READ_SEARCH
+                  - SETGID
+                  - SETUID
         command:
           - "/bin/sh"
           - "-c"
