@@ -10,6 +10,8 @@ template:
       {{- include "common.podSecurityContext" . | nindent 6 }}
     imagePullSecrets:
         - name: {{ include "secretname.dockerconfig" . }}
+    initContainers:
+      {{- include "adot.sidecar" (merge (dict "isJob" true) .) | nindent 6 }}
     containers:
       - name: coder
         securityContext:
@@ -20,9 +22,15 @@ template:
           - "/bin/sh"
           - "-c"
         args: [] # Auto filled
-        env: [] # Auto filled
+        env: 
+          - name: AUTH_TOKEN_FILE
+            value: "/var/run/descope/session.jwt"
         volumeMounts:
           {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 10 }}
+          - name: {{ include "secretname.sessionjwt" . }}
+            mountPath: "/var/run/descope/session.jwt"
+            subPath: token
+            readOnly: true
           - name: shared-storage
             mountPath: /worker-storage/data
           - name: home-volume
@@ -36,7 +44,6 @@ template:
           limits:
             cpu: 2000m
             memory: 8Gi
-      {{- include "adot.sidecar" . | nindent 6 }}
     volumes:
       {{- include "adot.volumes" . | nindent 6 }}
       - name: shared-storage
