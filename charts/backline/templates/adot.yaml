@@ -27,12 +27,12 @@ true
   This prevents Jobs from hanging as the sidecar will auto-terminate when main container completes.
   For Deployments: always include the sidecar regardless of K8s version.
 */ -}}
-{{- $isJob := and (hasKey . "isJob") .isJob }}
-{{- $includeContainer := not $isJob }}
-{{- if $isJob }}
-  {{- $includeContainer = include "adot.isK8sVersionGte129" . }}
+{{- $isJob := and (hasKey . "isJob") .isJob -}}
+{{- $includeContainer := not $isJob -}}
+{{- if $isJob -}}
+  {{- $includeContainer = include "adot.isK8sVersionGte129" . -}}
 {{- end }}
-{{- if $includeContainer }}
+{{- if $includeContainer -}}
 - name: adot-collector
   {{- if $isJob }}
   restartPolicy: Always
