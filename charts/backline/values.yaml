@@ -59,4 +59,4 @@ worker:
   otel:
     enabled: true
     collector:
-      image: public.ecr.aws/aws-observability/aws-otel-collector:v0.43.2
+      image: public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1

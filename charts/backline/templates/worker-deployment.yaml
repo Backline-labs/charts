@@ -22,6 +22,10 @@ spec:
         - name: {{ include "secretname.dockerconfig" . }}
       securityContext:
       {{- include "common.podSecurityContext" . | nindent 8 }}
+    {{- if include "adot.isK8sVersionGte129" .}}
+      initContainers:
+        {{- include "adot.sidecar" (merge (dict "isJob" true) .)  | nindent 8 -}}
+    {{- end}}
       containers:
         - name: worker
           image: "{{ include "worker.image.registry" . }}/{{ .Values.worker.image.name }}:{{ .Values.worker.image.tag | default .Chart.AppVersion }}"
@@ -67,7 +71,9 @@ spec:
             - mountPath: /worker-storage/data
               name: worker-storage
             {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 12 }}
+        {{- if not (include "adot.isK8sVersionGte129" .) }} 
         {{- include "adot.sidecar" . | nindent 8 }}
+        {{- end }}
       volumes:
         - name: worker-storage
           persistentVolumeClaim:
