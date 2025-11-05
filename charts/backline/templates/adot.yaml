@@ -54,7 +54,7 @@ true
         fieldRef:
           fieldPath: status.podIP
     - name: AWS_WEB_IDENTITY_TOKEN_FILE
-      value: "/var/run/descope/session.jwt"
+      value: "/var/run/descope/token"
     - name: AWS_ROLE_ARN
       value: {{ include "logging.roleArn" . | quote }}
     - name: AWS_REGION
@@ -75,8 +75,7 @@ true
     - name: adot-config
       mountPath: /etc/otel/
     - name: {{ include "secretname.sessionjwt" . }}
-      mountPath: "/var/run/descope/session.jwt"
-      subPath: token
+      mountPath: "/var/run/descope"
       readOnly: true
 {{- end }}
 {{- end -}}
