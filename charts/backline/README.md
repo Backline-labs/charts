@@ -25,7 +25,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 0.1.4
+**Chart Version:** 0.1.6
 **App Version:** 1.0.0
 
 ## Table of Contents
@@ -95,7 +95,7 @@ helm repo update backline-ai
 helm install backline \
   backline-ai/backline \
   --namespace backline \
-  --version 0.1.4 \
+  --version 0.1.6 \
   --create-namespace \
   --set accessKey='<YOUR ACCESS KEY>'
 ```
@@ -180,7 +180,7 @@ The Worker is the main application component.
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `worker.otel.enabled` | Enable OpenTelemetry | `true` |
-| `worker.otel.collector.image` | Image used to run OTEL collector | `public.ecr.aws/aws-observability/aws-otel-collector:v0.43.2` |
+| `worker.otel.collector.image` | Image used to run OTEL collector | `public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1` |
 
  
 
