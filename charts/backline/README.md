@@ -25,7 +25,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 0.1.8
+**Chart Version:** 0.1.9
 **App Version:** 1.0.0
 
 ## Table of Contents
@@ -95,7 +95,7 @@ helm repo update backline-ai
 helm install backline \
   backline-ai/backline \
   --namespace backline \
-  --version 0.1.8 \
+  --version 0.1.9 \
   --create-namespace \
   --set accessKey='<YOUR ACCESS KEY>'
 ```
