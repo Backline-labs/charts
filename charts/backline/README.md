@@ -180,7 +180,7 @@ The Worker is the main application component.
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `worker.otel.enabled` | Enable OpenTelemetry | `true` |
-| `worker.otel.collector.image` | Image used to run OTEL collector | `public.ecr.aws/aws-observability/aws-otel-collector:v0.43.2` |
+| `worker.otel.collector.image` | Image used to run OTEL collector | `public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1` |
 
  
 
