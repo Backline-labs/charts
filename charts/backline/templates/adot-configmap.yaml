@@ -18,6 +18,10 @@ data:
           - type: container
           - if: body matches "^\\s*\\{"
             type: json_parser
+            timestamp:
+              parse_from: attributes.ts
+              layout_type: gotime
+              layout: '2006-01-02T15:04:05.999999999-07:00'
         start_at: end
     processors:
       # Align with SaaS collector: prepare for future placeholder support by adding service.name
