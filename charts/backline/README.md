@@ -25,8 +25,8 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.0.0
-**App Version:** 1.0.0
+**Chart Version:** 1.0.1
+**App Version:** 1.0.1
 
 ## Table of Contents
 
@@ -95,7 +95,7 @@ helm repo update backline-ai
 helm install backline \
   backline-ai/backline \
   --namespace backline \
-  --version 1.0.0 \
+  --version 1.0.1 \
   --create-namespace \
   --set accessKey='<YOUR ACCESS KEY>'
 ```
@@ -121,65 +121,67 @@ helm install backline backline-ai/backline \
 
 ### Global Configuration
 
-| Parameter | Description | Required | Default |
-|-----------|-------------|----------|---------|
-| `accessKey` | Authentication key for API access | Yes | `""` |
-| `namespaceOverride` | Override the default namespace | No | `backline` |
-| `environment` | Backline AI SaaS endpoint environment (`staging` or `production`) | Yes | `staging` |
+| Parameter           | Description                                                       | Required | Default    |
+| ------------------- | ----------------------------------------------------------------- | -------- | ---------- |
+| `accessKey`         | Authentication key for API access                                 | Yes      | `""`       |
+| `namespaceOverride` | Override the default namespace                                    | No       | `backline` |
+| `environment`       | Backline AI SaaS endpoint environment (`staging` or `production`) | Yes      | `staging`  |
 
 ### Janitor Configuration
 
 The Janitor component runs periodic maintenance tasks as a CronJob.
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `janitor.image.registry` | Container registry | `docker.io` |
-| `janitor.image.name` | Image name | `dtzar/helm-kubectl` |
-| `janitor.image.tag` | Image tag | `3.16.1` |
-| `janitor.image.pullPolicy` | Image pull policy | `IfNotPresent` |
-| `janitor.resources.requests.cpu` | CPU request | `100m` |
-| `janitor.resources.requests.memory` | Memory request | `128Mi` |
-| `janitor.resources.limits.cpu` | CPU limit | `200m` |
-| `janitor.resources.limits.memory` | Memory limit | `256Mi` |
+| Parameter                           | Description        | Default              |
+| ----------------------------------- | ------------------ | -------------------- |
+| `janitor.image.registry`            | Container registry | `docker.io`          |
+| `janitor.image.name`                | Image name         | `dtzar/helm-kubectl` |
+| `janitor.image.tag`                 | Image tag          | `3.16.1`             |
+| `janitor.image.pullPolicy`          | Image pull policy  | `IfNotPresent`       |
+| `janitor.resources.requests.cpu`    | CPU request        | `100m`               |
+| `janitor.resources.requests.memory` | Memory request     | `128Mi`              |
+| `janitor.resources.limits.cpu`      | CPU limit          | `200m`               |
+| `janitor.resources.limits.memory`   | Memory limit       | `256Mi`              |
 
 ### Worker Configuration
 
 The Worker is the main application component.
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `worker.replicaCount` | Number of worker replicas | `1` |
-| `worker.image.registry` | Container registry | `580550010989.dkr.ecr.us-west-1.amazonaws.com` |
-| `worker.image.name` | Image name | `prod-worker` |
-| `worker.image.tag` | Image tag | `2faf8c5-1757332651` |
-| `worker.image.pullPolicy` | Image pull policy | `IfNotPresent` |
-| `worker.service.httpPort` | HTTP service port | `8080` |
-| `worker.resources.requests.cpu` | CPU request | `500m` |
-| `worker.resources.requests.memory` | Memory request | `1Gi` |
-| `worker.resources.limits.cpu` | CPU limit | `2000m` |
-| `worker.resources.limits.memory` | Memory limit | `2Gi` |
-| `worker.livenessProbe` | Liveness probe configuration | See values.yaml |
-| `worker.readinessProbe` | Readiness probe configuration | See values.yaml |
-| `worker.env` | Additional environment variables | `[]` |
-| `worker.envFromSecrets` | List of secrets to inject as environment variables | `[]` |
-| `worker.nodeSelector` | Node selector for pod assignment | `{}` |
-| `worker.tolerations` | Tolerations for pod assignment | `[]` |
-| `worker.affinity` | Affinity rules for pod assignment | `{}` |
+| Parameter                          | Description                                        | Default                                                |
+| ---------------------------------- | -------------------------------------------------- | ------------------------------------------------------ |
+| `worker.replicaCount`              | Number of worker replicas                          | `1`                                                    |
+| `worker.image.registry`            | Container registry                                 | `580550010989.dkr.ecr.us-west-1.amazonaws.com`         |
+| `worker.image.name`                | Image name                                         | `prod-worker`                                          |
+| `worker.image.tag`                 | Image tag                                          | `2faf8c5-1757332651`                                   |
+| `worker.image.pullPolicy`          | Image pull policy                                  | `IfNotPresent`                                         |
+| `worker.service.httpPort`          | HTTP service port                                  | `8080`                                                 |
+| `worker.modelName`                 | AI model for code generation tasks                 | `bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0` |
+| `worker.structuredOutputModelName` | AI model for structured output parsing             | `claude-haiku-4-5-20251001`                            |
+| `worker.resources.requests.cpu`    | CPU request                                        | `500m`                                                 |
+| `worker.resources.requests.memory` | Memory request                                     | `1Gi`                                                  |
+| `worker.resources.limits.cpu`      | CPU limit                                          | `2000m`                                                |
+| `worker.resources.limits.memory`   | Memory limit                                       | `2Gi`                                                  |
+| `worker.livenessProbe`             | Liveness probe configuration                       | See values.yaml                                        |
+| `worker.readinessProbe`            | Readiness probe configuration                      | See values.yaml                                        |
+| `worker.env`                       | Additional environment variables                   | `[]`                                                   |
+| `worker.envFromSecrets`            | List of secrets to inject as environment variables | `[]`                                                   |
+| `worker.nodeSelector`              | Node selector for pod assignment                   | `{}`                                                   |
+| `worker.tolerations`               | Tolerations for pod assignment                     | `[]`                                                   |
+| `worker.affinity`                  | Affinity rules for pod assignment                  | `{}`                                                   |
 
 #### Worker Storage Configuration
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `worker.storage.pvc.create` | Create PersistentVolumeClaim | `true` |
-| `worker.storage.pvc.name` | PVC name | `worker-storage` |
-| `worker.storage.pvc.storageClassName` | Storage class name (empty uses cluster default) | `""` |
-| `worker.storage.pvc.size` | Storage size | `10Gi` |
+| Parameter                             | Description                                     | Default          |
+| ------------------------------------- | ----------------------------------------------- | ---------------- |
+| `worker.storage.pvc.create`           | Create PersistentVolumeClaim                    | `true`           |
+| `worker.storage.pvc.name`             | PVC name                                        | `worker-storage` |
+| `worker.storage.pvc.storageClassName` | Storage class name (empty uses cluster default) | `""`             |
+| `worker.storage.pvc.size`             | Storage size                                    | `10Gi`           |
 
 #### Worker OpenTelemetry Configuration
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `worker.otel.enabled` | Enable OpenTelemetry | `true` |
+| Parameter                     | Description                      | Default                                                       |
+| ----------------------------- | -------------------------------- | ------------------------------------------------------------- |
+| `worker.otel.enabled`         | Enable OpenTelemetry             | `true`                                                        |
 | `worker.otel.collector.image` | Image used to run OTEL collector | `public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1` |
 
  
