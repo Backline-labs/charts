@@ -1,0 +1,60 @@
+{{/*
+Migration hook: Clean up old "worker" resources when upgrading to "runner"
+This hook runs before upgrade and deletes orphaned worker resources.
+It's safe to run multiple times - kubectl delete --ignore-not-found handles missing resources.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migration-cleanup-worker-to-runner
+  namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 60
+  template:
+    spec:
+      serviceAccountName: janitor
+      restartPolicy: Never
+      containers:
+      - name: cleanup
+        image: {{ $.Values.janitor.image.registry }}/{{ $.Values.janitor.image.name }}:{{ $.Values.janitor.image.tag }}
+        imagePullPolicy: {{ $.Values.janitor.image.pullPolicy }}
+        securityContext:
+          {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 10 }}
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+
+          echo "=== Migration: Cleaning up old 'worker' resources ==="
+
+          # Delete old worker resources (ignore if not found)
+          echo "Deleting old worker Deployment..."
+          kubectl delete deployment worker -n "$NAMESPACE" --ignore-not-found=true
+
+          echo "Deleting old worker Service..."
+          kubectl delete service worker -n "$NAMESPACE" --ignore-not-found=true
+
+          echo "Deleting old worker ServiceAccount..."
+          kubectl delete serviceaccount worker -n "$NAMESPACE" --ignore-not-found=true
+
+          echo "Deleting old worker Role..."
+          kubectl delete role worker -n "$NAMESPACE" --ignore-not-found=true
+
+          echo "Deleting old worker RoleBinding..."
+          kubectl delete rolebinding worker -n "$NAMESPACE" --ignore-not-found=true
+
+          echo "Deleting old worker ConfigMap..."
+          kubectl delete configmap worker -n "$NAMESPACE" --ignore-not-found=true
+
+          echo "Deleting old worker-storage PVC..."
+          kubectl delete pvc worker-storage -n "$NAMESPACE" --ignore-not-found=true
+
+          echo "=== Migration cleanup complete ==="

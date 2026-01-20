@@ -1,114 +1,53 @@
 {{- define "backline.rawUpgraderJobSpec" -}}
-activeDeadlineSeconds: 3600
-backoffLimit: 0
+activeDeadlineSeconds: {{ .Values.upgraderJob.activeDeadlineSeconds }}
+backoffLimit: {{ .Values.upgraderJob.backoffLimit }}
 template:
   metadata:
     labels: {} # Auto filled
   spec:
-    restartPolicy: Never
+    restartPolicy: {{ .Values.upgraderJob.restartPolicy }}
+    {{- with .Values.upgraderJob.podSecurityContext }}
     securityContext:
-        privileged: false
-        fsGroup: 1000
-        fsGroupChangePolicy: OnRootMismatch
-    initContainers:
-      - name: setup-shared-repo
-        image: alpine/git:latest
-        securityContext:
-            capabilities:
-                drop:
-                  - ALL
-                add:
-                  - CHOWN
-                  - DAC_OVERRIDE
-                  - FOWNER
-                  - DAC_READ_SEARCH
-                  - SETGID
-                  - SETUID
-        command:
-          - "/bin/sh"
-          - "-c"
-        args:
-          - |
-            # Create the repo directory
-            mkdir -p /repo &&
-
-            # Copy files from the shared volume (where worker placed them) to the repo directory
-            # The specific path in shared volume is based on req.Path or a subdirectory structure
-            SHARED_REPO_PATH="${REPO_PATH:-/worker-storage/data}"
-            if [ -d "$SHARED_REPO_PATH" ]; then
-              echo "Copying files from shared volume: $SHARED_REPO_PATH"
-              cp -r "$SHARED_REPO_PATH"/* /repo/ 2>/dev/null || true &&
-              cp -r "$SHARED_REPO_PATH"/.[^.]* /repo/ 2>/dev/null || true
-            else
-              echo "No files found in shared volume at $SHARED_REPO_PATH, creating empty repo"
-            fi &&
-
-            # Change to repo directory and initialize git
-            cd /repo &&
-
-            # Configure git
-            git config --global init.defaultBranch main &&
-            git config --global user.email 'dependabot@github.com' &&
-            git config --global user.name 'dependabot' &&
-
-            # Initialize git repository if not already initialized
-            if [ ! -d ".git" ]; then
-              git init &&
-              # Add all files and create initial commit
-              git add . &&
-              git commit --quiet -m 'Dependabot initial commit' || echo "No files to commit"
-            fi &&
-
-            # Checkout to specified branch if provided
-            if [ -n "main" ]; then
-              git checkout -b main || git checkout main 2>/dev/null || true
-            fi &&
-
-            # Set proper ownership for the dependabot user (UID 1000)
-            chown -R 1000:1000 /repo
-        volumeMounts:
-          - name: repo
-            mountPath: /repo
-          - name: shared-storage
-            mountPath: /worker-storage/data
-            readOnly: true
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    imagePullSecrets:
+      - name: {{ include "secretname.dockerconfig" . }}
     containers:
-      - name: dependabot-updater
+      - name: {{ .Values.upgraderJob.container.name }}
         image: # Auto filled according to package manager
-        imagePullPolicy: Always
+        imagePullPolicy: {{ .Values.upgraderJob.container.image.pullPolicy }}
+        {{- with .Values.upgraderJob.container.securityContext }}
         securityContext:
-            runAsUser: 1000
-            runAsGroup: 1000
-            capabilities:
-                drop:
-                    - ALL
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         command:
           - "/bin/sh"
           - "-c"
         args: [] # Auto filled
         env: [] # Auto filled
         volumeMounts:
-          - name: shared-storage
-            mountPath: /worker-storage/data
-          - name: repo
-            mountPath: /home/dependabot/dependabot-updater/repo
-        resources:
-          requests:
-            cpu: 200m
-            memory: 512Mi
-          limits:
-            cpu: 2000m
-            memory: 8Gi
+          {{- with .Values.upgraderJob.container.volumeMounts }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+        resources: {} # Auto filled from resource profiles
+    {{- with .Values.upgraderJob.volumes }}
     volumes:
-      - name: shared-storage
-        persistentVolumeClaim:
-          claimName: {{ .Values.worker.storage.pvc.name }}
-      - name: repo
-        emptyDir: {}
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.upgraderJob.nodeSelector }}
+    nodeSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.upgraderJob.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.upgraderJob.affinity }}
+    affinity:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
 {{- end -}}
 
 {{- define "backline.upgraderJobSpec" -}}
 {{ include "backline.rawUpgraderJobSpec" . | fromYaml | toJson }}
 {{- end -}}
-
-

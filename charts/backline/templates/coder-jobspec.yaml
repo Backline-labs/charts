@@ -1,23 +1,27 @@
 {{- define "backline.rawCoderJobSpec" -}}
-activeDeadlineSeconds: 3600
-backoffLimit: 0
+activeDeadlineSeconds: {{ .Values.coderJob.activeDeadlineSeconds }}
+backoffLimit: {{ .Values.coderJob.backoffLimit }}
 template:
   metadata:
     labels: {} # Auto filled
   spec:
-    restartPolicy: Never
+    restartPolicy: {{ .Values.coderJob.restartPolicy }}
+    {{- with .Values.coderJob.podSecurityContext }}
     securityContext:
-      {{- include "common.podSecurityContext" . | nindent 6 }}
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
     imagePullSecrets:
         - name: {{ include "secretname.dockerconfig" . }}
     initContainers:
       {{- include "adot.sidecar" (merge (dict "isJob" true) .) | nindent 6 }}
     containers:
       - name: coder
+        {{- with .Values.coderJob.containerSecurityContext }}
         securityContext:
-          {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" true) | nindent 10 }}
-        image: backline-ai/coder:latest
-        imagePullPolicy: IfNotPresent
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        image: "{{ include "runner.image.registry" . }}/{{ .Values.coderJob.image.name }}:{{ .Values.coderJob.image.tag }}"
+        imagePullPolicy: {{ .Values.coderJob.image.pullPolicy }}
         command:
           - "/bin/sh"
           - "-c"
@@ -30,32 +34,29 @@ template:
           - name: {{ include "secretname.sessionjwt" . }}
             mountPath: "/var/run/descope"
             readOnly: true
-          - name: shared-storage
-            mountPath: /worker-storage/data
-          - name: home-volume
-            mountPath: /home/app_user
-          - name: tmp-volume
-            mountPath: /tmp
-        resources:
-          requests:
-            cpu: 200m
-            memory: 512Mi
-          limits:
-            cpu: 2000m
-            memory: 8Gi
+          {{- with .Values.coderJob.volumeMounts }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+        resources: {} # Auto filled from resource profiles
     volumes:
       {{- include "adot.volumes" . | nindent 6 }}
-      - name: shared-storage
-        persistentVolumeClaim:
-          claimName: {{ .Values.worker.storage.pvc.name }}
-      - name: home-volume
-        emptyDir: {}
-      - name: tmp-volume
-        emptyDir: {}
+      {{- with .Values.coderJob.volumes }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+    {{- with .Values.coderJob.nodeSelector }}
+    nodeSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.coderJob.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.coderJob.affinity }}
+    affinity:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
 {{- end -}}
 
 {{- define "backline.coderJobSpec" -}}
 {{ include "backline.rawCoderJobSpec" . | fromYaml | toJson }}
 {{- end -}}
-
-

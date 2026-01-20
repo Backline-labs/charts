@@ -35,7 +35,7 @@ arn:aws:iam::580550010989:role/OnPremOtelShipRole
 {{- end -}}
 {{- end -}}
 
-{{- define "worker.image.registry" -}}
+{{- define "runner.image.registry" -}}
 {{- if eq .Values.environment "staging" -}}
 580550010989.dkr.ecr.us-west-1.amazonaws.com
 {{- else -}}
