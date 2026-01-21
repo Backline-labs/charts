@@ -2,17 +2,6 @@
 accessKey: ""
 environment: "production"
 namespaceOverride: "backline"
-# Override the base URL for adapter/litellm (useful for on-prem/local development)
-# Example: "http://localhost:8080"
-baseUrlOverride: ""
-# Override the Host header for internal requests (useful when using Istio ingress internally)
-# Example: "localhost"
-hostHeaderOverride: ""
-# Override the Temporal proxy gRPC endpoint (for direct gRPC connection)
-# Example: "queueadapter.backline.svc.cluster.local:6060"
-temporalProxyOverride: ""
-# Skip TLS certificate verification for adapter connections (for local/dev)
-adapterSkipCertVerification: false
 
 # ============================================================================
 # MINIO OBJECT STORAGE (Subchart)
