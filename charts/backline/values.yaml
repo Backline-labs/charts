@@ -66,9 +66,6 @@ janitor:
 worker:
   replicaCount: 1
   image:
-    # Override the registry (useful for local/on-prem with Tilt)
-    # Example: "localhost:5000" or leave empty for default ECR
-    registry: ""
     name: prod-runner
     tag: "latest"
     pullPolicy: IfNotPresent
