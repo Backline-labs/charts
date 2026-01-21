@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: runner
+  name: worker
   namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
   labels:
-    app: runner
+    app: worker
   annotations:
-    checksum/config: {{(include (print $.Template.BasePath "/runner-configmap.yaml") . | sha256sum) | quote }}
+    checksum/config: {{(include (print $.Template.BasePath "/worker-configmap.yaml") . | sha256sum) | quote }}
 spec:
-  replicas: {{ .Values.runner.replicaCount }}
+  replicas: {{ .Values.worker.replicaCount }}
   selector:
     matchLabels:
-      app: runner
+      app: worker
   template:
     metadata:
       labels:
-        app: runner
+        app: worker
     spec:
-      serviceAccountName: runner
+      serviceAccountName: worker
       imagePullSecrets:
         - name: {{ include "secretname.dockerconfig" . }}
       securityContext:
@@ -27,26 +27,26 @@ spec:
         {{- include "adot.sidecar" (merge (dict "isJob" true) .)  | nindent 8 -}}
     {{- end}}
       containers:
-        - name: runner
-          image: "{{ include "runner.image.registry" . }}/{{ .Values.runner.image.name }}:{{ .Values.runner.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.runner.image.pullPolicy }}
+        - name: worker
+          image: "{{ include "worker.image.registry" . }}/{{ .Values.worker.image.name }}:{{ .Values.worker.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
           securityContext:
             {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 12 }}
           ports:
             - name: http
-              containerPort: {{ .Values.runner.service.httpPort }}
+              containerPort: {{ .Values.worker.service.httpPort }}
               protocol: TCP
           livenessProbe:
-            {{- toYaml .Values.runner.livenessProbe | nindent 12 }}
+            {{- toYaml .Values.worker.livenessProbe | nindent 12 }}
           readinessProbe:
-            {{- toYaml .Values.runner.readinessProbe | nindent 12 }}
+            {{- toYaml .Values.worker.readinessProbe | nindent 12 }}
           resources:
-            {{- toYaml .Values.runner.resources | nindent 12 }}
+            {{- toYaml .Values.worker.resources | nindent 12 }}
           envFrom:
             - configMapRef:
-                name: runner
-            {{- if and .Values.runner.envFromSecrets (gt (len .Values.runner.envFromSecrets) 0) }}
-            {{- range .Values.runner.envFromSecrets }}
+                name: worker
+            {{- if and .Values.worker.envFromSecrets (gt (len .Values.worker.envFromSecrets) 0) }}
+            {{- range .Values.worker.envFromSecrets }}
             - secretRef:
                 name: {{ .ref }}
                 {{- if .key }}
@@ -55,8 +55,8 @@ spec:
             {{- end }}
             {{- end }}
           env:
-          {{- if and .Values.runner.env (gt (len .Values.runner.env) 0) }}
-            {{- toYaml .Values.runner.env | nindent 12 }}
+          {{- if and .Values.worker.env (gt (len .Values.worker.env) 0) }}
+            {{- toYaml .Values.worker.env | nindent 12 }}
           {{- end }}
             - name: ACCESS_KEY
               valueFrom:
@@ -67,6 +67,18 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            {{- if .Values.minio.enabled }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-minio
+                  key: rootUser
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-minio
+                  key: rootPassword
+            {{- end }}
           volumeMounts:
             {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 12 }}
         {{- if not (include "adot.isK8sVersionGte129" .) }}
@@ -74,15 +86,15 @@ spec:
         {{- end }}
       volumes:
       {{- include "adot.volumes" . | nindent 8 }}
-      {{- with .Values.runner.nodeSelector }}
+      {{- with .Values.worker.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.runner.affinity }}
+      {{- with .Values.worker.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.runner.tolerations }}
+      {{- with .Values.worker.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}

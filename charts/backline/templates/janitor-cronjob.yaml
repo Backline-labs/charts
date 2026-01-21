@@ -179,11 +179,11 @@ spec:
               # Sanitize for CWL restrictions (no colon or asterisk)
               DCT=$(echo "$DCT" | tr -d ':' | tr -d '*')
 
-              # Update runner ConfigMap LOG_STREAM_NAME if changed
-              CM_JSON=$(kubectl -n "$NAMESPACE" get configmap runner -o json)
+              # Update worker ConfigMap LOG_STREAM_NAME if changed
+              CM_JSON=$(kubectl -n "$NAMESPACE" get configmap worker -o json)
               CURRENT=$(echo "$CM_JSON" | jq -r '.data.LOG_STREAM_NAME // empty')
               if [ "$CURRENT" != "$DCT" ]; then
-                echo "Updating runner ConfigMap LOG_STREAM_NAME to $DCT"
+                echo "Updating worker ConfigMap LOG_STREAM_NAME to $DCT"
                 echo "$CM_JSON" | jq --arg v "$DCT" '.data.LOG_STREAM_NAME = $v' | kubectl apply -f -
                 cm_changed=1
               else
@@ -191,12 +191,12 @@ spec:
                 cm_changed=0
               fi
 
-              echo "[4/4] Runner image updater"
+              echo "[4/4] Worker image updater"
               NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
-              DEPLOYMENT_NAME=runner
-              CONTAINER_NAME=runner
-              REGISTRY={{ include "runner.image.registry" . }}
-              REPOSITORY={{ $.Values.runner.image.name }}
+              DEPLOYMENT_NAME=worker
+              CONTAINER_NAME=worker
+              REGISTRY={{ include "worker.image.registry" . }}
+              REPOSITORY={{ $.Values.worker.image.name }}
 
               CONFIG_PATH=/tmp/config.json
               if [ ! -s "$CONFIG_PATH" ]; then echo "dockerconfig not available"; exit 1; fi
@@ -221,7 +221,7 @@ spec:
               if [ -z "$NEW_TAG" ]; then echo "no tags with ticks suffix found"; exit 0; fi
 
               if [ "$NEW_TAG" = "$CURRENT_TAG" ] && [ "${cm_changed:-0}" -eq 0 ]; then
-                echo "runner image already at latest tag: $CURRENT_TAG and no config change"; exit 0;
+                echo "worker image already at latest tag: $CURRENT_TAG and no config change"; exit 0;
               fi
 
               CURRENT_TICKS=${CURRENT_TAG##*-}

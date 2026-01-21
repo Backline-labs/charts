@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: runner
+  name: worker
   namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
 spec:
   type: ClusterIP
   ports:
-    - port: {{ .Values.runner.service.httpPort }}
+    - port: {{ .Values.worker.service.httpPort }}
       targetPort: http
       protocol: TCP
       name: http
   selector:
-    app: runner
+    app: worker

@@ -20,7 +20,7 @@ template:
         securityContext:
           {{- toYaml . | nindent 10 }}
         {{- end }}
-        image: "{{ include "runner.image.registry" . }}/{{ .Values.coderJob.image.name }}:{{ .Values.coderJob.image.tag }}"
+        image: "{{ include "worker.image.registry" . }}/{{ .Values.coderJob.image.name }}:{{ .Values.coderJob.image.tag }}"
         imagePullPolicy: {{ .Values.coderJob.image.pullPolicy }}
         command:
           - "/bin/sh"

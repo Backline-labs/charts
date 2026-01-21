@@ -2,6 +2,61 @@
 accessKey: ""
 environment: "production"
 namespaceOverride: "backline"
+# Override the base URL for adapter/litellm (useful for on-prem/local development)
+# Example: "http://localhost:8080"
+baseUrlOverride: ""
+# Override the Host header for internal requests (useful when using Istio ingress internally)
+# Example: "localhost"
+hostHeaderOverride: ""
+# Override the Temporal proxy gRPC endpoint (for direct gRPC connection)
+# Example: "queueadapter.backline.svc.cluster.local:6060"
+temporalProxyOverride: ""
+# Skip TLS certificate verification for adapter connections (for local/dev)
+adapterSkipCertVerification: false
+
+# ============================================================================
+# MINIO OBJECT STORAGE (Subchart)
+# ============================================================================
+minio:
+  enabled: true
+  fullnameOverride: minio
+  # Standalone mode (single node)
+  mode: standalone
+  # Root credentials
+  rootUser: "backline"
+  rootPassword: "backline-minio-password"
+  # Persistence configuration
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+  # Resource configuration
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 9000
+  # Disable web console
+  consoleEnabled: false
+  # Default buckets to create
+  buckets:
+    - name: static-assets
+      policy: none
+      purge: false
+      objectlocking: false
+    - name: operational
+      policy: none
+      purge: false
+      objectlocking: false
+  # Post-install job for bucket creation
+  postJob:
+    enabled: true
 
 # Janitor component
 janitor:
@@ -18,10 +73,13 @@ janitor:
       cpu: "200m"
       memory: "256Mi"
 
-# Runner component
-runner:
+# Worker component
+worker:
   replicaCount: 1
   image:
+    # Override the registry (useful for local/on-prem with Tilt)
+    # Example: "localhost:5000" or leave empty for default ECR
+    registry: ""
     name: prod-runner
     tag: "latest"
     pullPolicy: IfNotPresent
@@ -68,7 +126,7 @@ coderJob:
 
   # Image configuration
   image:
-    name: ""  # Auto-filled by runner
+    name: ""  # Auto-filled by worker
     tag: ""
     pullPolicy: IfNotPresent
 
@@ -128,7 +186,7 @@ upgraderJob:
   container:
     name: dependabot-updater
     image:
-      name: ""  # Auto-filled by runner based on package manager
+      name: ""  # Auto-filled by worker based on package manager
       tag: ""
       pullPolicy: IfNotPresent
     securityContext:

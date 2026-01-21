@@ -1,21 +1,27 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: runner
+  name: worker
   namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
 data:
-  STRUCTURED_OUTPUT_MODEL_NAME: {{ .Values.runner.structuredOutputModelName | quote }}
-  MODEL_NAME: {{ .Values.runner.modelName | quote }}
-  WITH_TELEMETRY: {{ .Values.runner.otel.enabled | quote }}
+  STRUCTURED_OUTPUT_MODEL_NAME: {{ .Values.worker.structuredOutputModelName | quote }}
+  MODEL_NAME: {{ .Values.worker.modelName | quote }}
+  WITH_TELEMETRY: {{ .Values.worker.otel.enabled | quote }}
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
   OTEL_EXPORTER_OTLP_HOST: "localhost"
   OTEL_EXPORTER_OTLP_PORT: "4317"
   LOG_FILE_ENABLED: {{ true | quote }}
-  LOG_FILE_PATH: {{ printf "%s/runner.log" (include "logging.dir" .) | quote }}
+  LOG_FILE_PATH: {{ printf "%s/worker.log" (include "logging.dir" .) | quote }}
   LOG_STREAM_NAME: "" # Set by janitor
   LITELLM_SERVICE_URL: {{ printf "%s/api/litellm/v1/proxy" (include "baseUrl" .) | quote }}
   ADAPTER_ENABLED: "true"
   ADAPTER_BASE_URL: {{ printf "%s/api/adapter/v1" (include "baseUrl" .) | quote }}
+  {{- if .Values.minio.enabled }}
+  AWS_DEV_ENDPOINT: {{ printf "http://%s-minio.%s.svc.cluster.local:%d" .Release.Name (default .Release.Namespace .Values.namespaceOverride) (int .Values.minio.service.port) | quote }}
+  AWS_REGION: "us-east-1"
+  AWS_STATIC_ASSETS_BUCKET: "static-assets"
+  AWS_OPERATIONAL_BUCKET: "operational"
+  {{- end }}
   DBOT_UPGRADER_NAMESPACE: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
   CODER_NAMESPACE: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
   CODER_JOB_SPEC: |

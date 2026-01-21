@@ -37,7 +37,7 @@ true
   {{- if $isJob }}
   restartPolicy: Always
   {{- end }}
-  image: {{ .Values.runner.otel.collector.image }}
+  image: {{ .Values.worker.otel.collector.image }}
   args: ["--config=/etc/otel/config.yaml"]
   ports:
     - containerPort: 4317
@@ -62,7 +62,7 @@ true
     - name: LOG_STREAM_NAME
       valueFrom:
         configMapKeyRef:
-          name: runner
+          name: worker
           key: LOG_STREAM_NAME
   securityContext:
     allowPrivilegeEscalation: false
