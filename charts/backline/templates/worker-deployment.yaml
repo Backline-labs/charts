@@ -71,12 +71,12 @@ spec:
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-minio
+                  name: minio
                   key: rootUser
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-minio
+                  name: minio
                   key: rootPassword
             {{- end }}
           volumeMounts:
