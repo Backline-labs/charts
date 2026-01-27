@@ -1,51 +1,39 @@
 {{- define "backline.rawUpgraderJobSpec" -}}
-activeDeadlineSeconds: {{ .Values.upgraderJob.activeDeadlineSeconds }}
-backoffLimit: {{ .Values.upgraderJob.backoffLimit }}
+activeDeadlineSeconds: 3600
+backoffLimit: 0
 template:
   metadata:
     labels: {} # Auto filled
   spec:
-    restartPolicy: {{ .Values.upgraderJob.restartPolicy }}
-    {{- with .Values.upgraderJob.podSecurityContext }}
+    restartPolicy: Never
     securityContext:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
+      privileged: false
+      fsGroup: 1000
+      fsGroupChangePolicy: OnRootMismatch
     imagePullSecrets:
       - name: {{ include "secretname.dockerconfig" . }}
     containers:
-      - name: {{ .Values.upgraderJob.container.name }}
+      - name: dependabot-updater
         image: # Auto filled according to package manager
-        imagePullPolicy: {{ .Values.upgraderJob.container.image.pullPolicy }}
-        {{- with .Values.upgraderJob.container.securityContext }}
+        imagePullPolicy: Always
         securityContext:
-          {{- toYaml . | nindent 10 }}
-        {{- end }}
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+              - ALL
         command:
           - "/bin/sh"
           - "-c"
         args: [] # Auto filled
         env: [] # Auto filled
         volumeMounts:
-          {{- with .Values.upgraderJob.container.volumeMounts }}
-          {{- toYaml . | nindent 10 }}
-          {{- end }}
+          - name: repo
+            mountPath: /home/dependabot/dependabot-updater/repo
         resources: {} # Auto filled from resource profiles
-    {{- with .Values.upgraderJob.volumes }}
     volumes:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
-    {{- with .Values.upgraderJob.nodeSelector }}
-    nodeSelector:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
-    {{- with .Values.upgraderJob.tolerations }}
-    tolerations:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
-    {{- with .Values.upgraderJob.affinity }}
-    affinity:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
+      - name: repo
+        emptyDir: {}
 {{- end -}}
 
 {{- define "backline.upgraderJobSpec" -}}

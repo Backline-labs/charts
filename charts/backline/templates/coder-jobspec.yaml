@@ -1,27 +1,23 @@
 {{- define "backline.rawCoderJobSpec" -}}
-activeDeadlineSeconds: {{ .Values.coderJob.activeDeadlineSeconds }}
-backoffLimit: {{ .Values.coderJob.backoffLimit }}
+activeDeadlineSeconds: 3600
+backoffLimit: 0
 template:
   metadata:
     labels: {} # Auto filled
   spec:
-    restartPolicy: {{ .Values.coderJob.restartPolicy }}
-    {{- with .Values.coderJob.podSecurityContext }}
+    restartPolicy: Never
     securityContext:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
+      {{- include "common.podSecurityContext" . | nindent 6 }}
     imagePullSecrets:
         - name: {{ include "secretname.dockerconfig" . }}
     initContainers:
       {{- include "adot.sidecar" (merge (dict "isJob" true) .) | nindent 6 }}
     containers:
       - name: coder
-        {{- with .Values.coderJob.containerSecurityContext }}
         securityContext:
-          {{- toYaml . | nindent 10 }}
-        {{- end }}
-        image: "{{ include "worker.image.registry" . }}/{{ .Values.coderJob.image.name }}:{{ .Values.coderJob.image.tag }}"
-        imagePullPolicy: {{ .Values.coderJob.image.pullPolicy }}
+          {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" true) | nindent 10 }}
+        image: backline-ai/coder:latest
+        imagePullPolicy: IfNotPresent
         command:
           - "/bin/sh"
           - "-c"
@@ -34,27 +30,17 @@ template:
           - name: {{ include "secretname.sessionjwt" . }}
             mountPath: "/var/run/descope"
             readOnly: true
-          {{- with .Values.coderJob.volumeMounts }}
-          {{- toYaml . | nindent 10 }}
-          {{- end }}
+          - name: home-volume
+            mountPath: /home/app_user
+          - name: tmp-volume
+            mountPath: /tmp
         resources: {} # Auto filled from resource profiles
     volumes:
       {{- include "adot.volumes" . | nindent 6 }}
-      {{- with .Values.coderJob.volumes }}
-      {{- toYaml . | nindent 6 }}
-      {{- end }}
-    {{- with .Values.coderJob.nodeSelector }}
-    nodeSelector:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
-    {{- with .Values.coderJob.tolerations }}
-    tolerations:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
-    {{- with .Values.coderJob.affinity }}
-    affinity:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
+      - name: home-volume
+        emptyDir: {}
+      - name: tmp-volume
+        emptyDir: {}
 {{- end -}}
 
 {{- define "backline.coderJobSpec" -}}
