@@ -67,7 +67,7 @@ worker:
   replicaCount: 1
   image:
     name: prod-runner
-    tag: "latest"
+    tag: "0000001-0000000001"
     pullPolicy: IfNotPresent
   service:
     httpPort: 8080
