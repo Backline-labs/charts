@@ -67,17 +67,24 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            {{- if .Values.minio.enabled }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: minio
+                  key: rootUser
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio
+                  key: rootPassword
+            {{- end }}
           volumeMounts:
-            - mountPath: /worker-storage/data
-              name: worker-storage
             {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 12 }}
-        {{- if not (include "adot.isK8sVersionGte129" .) }} 
+        {{- if not (include "adot.isK8sVersionGte129" .) }}
         {{- include "adot.sidecar" . | nindent 8 }}
         {{- end }}
       volumes:
-        - name: worker-storage
-          persistentVolumeClaim:
-            claimName: {{ .Values.worker.storage.pvc.name }}
       {{- include "adot.volumes" . | nindent 8 }}
       {{- with .Values.worker.nodeSelector }}
       nodeSelector:
@@ -91,4 +98,3 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-

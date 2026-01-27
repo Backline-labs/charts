@@ -7,102 +7,31 @@ template:
   spec:
     restartPolicy: Never
     securityContext:
-        privileged: false
-        fsGroup: 1000
-        fsGroupChangePolicy: OnRootMismatch
-    initContainers:
-      - name: setup-shared-repo
-        image: alpine/git:latest
-        securityContext:
-            capabilities:
-                drop:
-                  - ALL
-                add:
-                  - CHOWN
-                  - DAC_OVERRIDE
-                  - FOWNER
-                  - DAC_READ_SEARCH
-                  - SETGID
-                  - SETUID
-        command:
-          - "/bin/sh"
-          - "-c"
-        args:
-          - |
-            # Create the repo directory
-            mkdir -p /repo &&
-
-            # Copy files from the shared volume (where worker placed them) to the repo directory
-            # The specific path in shared volume is based on req.Path or a subdirectory structure
-            SHARED_REPO_PATH="${REPO_PATH:-/worker-storage/data}"
-            if [ -d "$SHARED_REPO_PATH" ]; then
-              echo "Copying files from shared volume: $SHARED_REPO_PATH"
-              cp -r "$SHARED_REPO_PATH"/* /repo/ 2>/dev/null || true &&
-              cp -r "$SHARED_REPO_PATH"/.[^.]* /repo/ 2>/dev/null || true
-            else
-              echo "No files found in shared volume at $SHARED_REPO_PATH, creating empty repo"
-            fi &&
-
-            # Change to repo directory and initialize git
-            cd /repo &&
-
-            # Configure git
-            git config --global init.defaultBranch main &&
-            git config --global user.email 'dependabot@github.com' &&
-            git config --global user.name 'dependabot' &&
-
-            # Initialize git repository if not already initialized
-            if [ ! -d ".git" ]; then
-              git init &&
-              # Add all files and create initial commit
-              git add . &&
-              git commit --quiet -m 'Dependabot initial commit' || echo "No files to commit"
-            fi &&
-
-            # Checkout to specified branch if provided
-            if [ -n "main" ]; then
-              git checkout -b main || git checkout main 2>/dev/null || true
-            fi &&
-
-            # Set proper ownership for the dependabot user (UID 1000)
-            chown -R 1000:1000 /repo
-        volumeMounts:
-          - name: repo
-            mountPath: /repo
-          - name: shared-storage
-            mountPath: /worker-storage/data
-            readOnly: true
+      privileged: false
+      fsGroup: 1000
+      fsGroupChangePolicy: OnRootMismatch
+    imagePullSecrets:
+      - name: {{ include "secretname.dockerconfig" . }}
     containers:
       - name: dependabot-updater
         image: # Auto filled according to package manager
         imagePullPolicy: Always
         securityContext:
-            runAsUser: 1000
-            runAsGroup: 1000
-            capabilities:
-                drop:
-                    - ALL
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+              - ALL
         command:
           - "/bin/sh"
           - "-c"
         args: [] # Auto filled
         env: [] # Auto filled
         volumeMounts:
-          - name: shared-storage
-            mountPath: /worker-storage/data
           - name: repo
             mountPath: /home/dependabot/dependabot-updater/repo
-        resources:
-          requests:
-            cpu: 200m
-            memory: 512Mi
-          limits:
-            cpu: 2000m
-            memory: 8Gi
+        resources: {} # Auto filled from resource profiles
     volumes:
-      - name: shared-storage
-        persistentVolumeClaim:
-          claimName: {{ .Values.worker.storage.pvc.name }}
       - name: repo
         emptyDir: {}
 {{- end -}}
@@ -110,5 +39,3 @@ template:
 {{- define "backline.upgraderJobSpec" -}}
 {{ include "backline.rawUpgraderJobSpec" . | fromYaml | toJson }}
 {{- end -}}
-
-
