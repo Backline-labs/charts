@@ -15,19 +15,10 @@ rules:
   verbs: ["get", "create", "update", "patch"]
 - apiGroups: [""]
   resources: ["configmaps"]
-  verbs: ["get", "create", "update", "patch", "delete"]
-- apiGroups: [""]
-  resources: ["services", "serviceaccounts"]
-  verbs: ["delete"]
-- apiGroups: [""]
-  resources: ["persistentvolumeclaims"]
-  verbs: ["delete"]
+  verbs: ["get", "create", "update", "patch"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  verbs: ["get", "patch", "update", "list", "delete"]
-- apiGroups: ["rbac.authorization.k8s.io"]
-  resources: ["roles", "rolebindings"]
-  verbs: ["delete"]
+  verbs: ["get", "patch", "update", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
