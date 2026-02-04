@@ -3,6 +3,21 @@ accessKey: ""
 environment: "production"
 namespaceOverride: "backline"
 
+# Network Policy Configuration (requires Cilium CNI)
+# Restricts coder pod egress to only allowed destinations
+networkPolicy:
+  enabled: true
+  # Add custom egress rules for your internal registries/services
+  # Example:
+  # customEgress:
+  #   - fqdns:
+  #       - matchName: "artifactory.mycompany.com"
+  #       - matchPattern: "*.internal.mycompany.com"
+  #     ports:
+  #       - port: "443"
+  #         protocol: TCP
+  customEgress: []
+
 # Janitor component
 janitor:
   image:

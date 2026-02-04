@@ -1,0 +1,182 @@
+{{- if .Values.networkPolicy.enabled }}
+# CiliumNetworkPolicy for Coder Pod Egress Whitelist
+# This policy restricts outbound network access from coder pods to only
+# the domains required for package management and source code access.
+#
+# Prerequisites:
+# - Cilium must be installed in the cluster
+#
+# Customers can add custom URLs via values.yaml:
+#   networkPolicy.customEgress
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: coder-egress-whitelist
+  namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+spec:
+  endpointSelector:
+    matchLabels:
+      app: coder
+
+  egress:
+    # ==========================================================================
+    # 1. DNS Resolution (required for FQDN rules to work)
+    # ==========================================================================
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # ==========================================================================
+    # 2. Internal Cluster Services (worker)
+    # ==========================================================================
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+            app: worker
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
+    # ==========================================================================
+    # 3. JavaScript/Node.js Package Registries
+    # ==========================================================================
+    - toFQDNs:
+        - matchName: "registry.npmjs.org"
+        - matchName: "registry.yarnpkg.com"
+        - matchName: "raw.githubusercontent.com"
+        - matchName: "nodejs.org"
+        - matchPattern: "*.nodejs.org"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # ==========================================================================
+    # 4. Python Package Registries
+    # ==========================================================================
+    - toFQDNs:
+        - matchName: "pypi.org"
+        - matchName: "files.pythonhosted.org"
+        - matchName: "conda.anaconda.org"
+        - matchName: "repo.anaconda.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # ==========================================================================
+    # 5. Java Package Registries (Maven + Gradle)
+    # ==========================================================================
+    - toFQDNs:
+        - matchName: "repo.maven.apache.org"
+        - matchName: "repo1.maven.org"
+        - matchName: "search.maven.org"
+        - matchName: "services.gradle.org"
+        - matchName: "plugins.gradle.org"
+        - matchName: "downloads.gradle.org"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # ==========================================================================
+    # 6. Go Module Proxy
+    # ==========================================================================
+    - toFQDNs:
+        - matchName: "proxy.golang.org"
+        - matchName: "sum.golang.org"
+        - matchName: "storage.googleapis.com"
+        - matchName: "go.dev"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # ==========================================================================
+    # 7. Rust Package Registry
+    # ==========================================================================
+    - toFQDNs:
+        - matchName: "crates.io"
+        - matchName: "static.crates.io"
+        - matchName: "index.crates.io"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # ==========================================================================
+    # 8. Container Registries
+    # ==========================================================================
+    - toFQDNs:
+        # Docker Hub
+        - matchName: "docker.io"
+        - matchPattern: "*.docker.io"
+        - matchName: "production.cloudflare.docker.com"
+        # Google Container Registry & Artifact Registry
+        - matchName: "gcr.io"
+        - matchPattern: "*.gcr.io"
+        - matchPattern: "*.pkg.dev"
+        # GitHub Container Registry
+        - matchName: "ghcr.io"
+        # Quay.io
+        - matchName: "quay.io"
+        # Azure Container Registry
+        - matchPattern: "*.azurecr.io"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # ==========================================================================
+    # 9. Source Code Managers (GitHub, GitLab, Bitbucket)
+    # ==========================================================================
+    - toFQDNs:
+        # GitHub
+        - matchName: "github.com"
+        - matchName: "api.github.com"
+        - matchPattern: "*.github.com"
+        - matchName: "raw.githubusercontent.com"
+        # GitLab
+        - matchName: "gitlab.com"
+        - matchPattern: "*.gitlab.com"
+        # Bitbucket
+        - matchName: "bitbucket.org"
+        - matchPattern: "*.bitbucket.org"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "22"
+              protocol: TCP
+
+    {{- if and .Values.networkPolicy.customEgress (gt (len .Values.networkPolicy.customEgress) 0) }}
+    # ==========================================================================
+    # 10. Customer Custom Egress Rules
+    # ==========================================================================
+    {{- range .Values.networkPolicy.customEgress }}
+    - toFQDNs:
+        {{- range .fqdns }}
+        {{- if .matchName }}
+        - matchName: {{ .matchName | quote }}
+        {{- end }}
+        {{- if .matchPattern }}
+        - matchPattern: {{ .matchPattern | quote }}
+        {{- end }}
+        {{- end }}
+      toPorts:
+        - ports:
+            {{- range .ports }}
+            - port: {{ .port | quote }}
+              protocol: {{ .protocol | default "TCP" }}
+            {{- end }}
+    {{- end }}
+    {{- end }}
+{{- end }}
