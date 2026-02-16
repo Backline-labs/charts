@@ -47,7 +47,6 @@ graph TB
       - [Worker OpenTelemetry Configuration](#worker-opentelemetry-configuration)
     - [MinIO Configuration](#minio-configuration)
     - [Resource Profiles](#resource-profiles)
-  - [Storage Requirements](#storage-requirements)
   - [Network Policy Recommendations (Egress Whitelist)](#network-policy-recommendations-egress-whitelist)
     - [DNS Resolution](#dns-resolution)
     - [Package Registries](#package-registries)
@@ -587,6 +586,7 @@ kubectl logs -n backline job/janitor-<timestamp> -c janitor
 ```bash
 kubectl create job -n backline --from=cronjob/janitor janitor-manual
 ```
+
 ## Support
 
 For issues, questions, or feature requests, please contact [Backline support](mailto:support@backline.ai).
