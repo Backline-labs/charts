@@ -17,7 +17,7 @@ data:
   ADAPTER_ENABLED: "true"
   ADAPTER_BASE_URL: {{ printf "%s/api/adapter/v1" (include "baseUrl" .) | quote }}
   {{- if .Values.minio.enabled }}
-  AWS_DEV_ENDPOINT: {{ printf "http://%s-minio.%s.svc.cluster.local:%d" .Release.Name (default .Release.Namespace .Values.namespaceOverride) (int .Values.minio.service.port) | quote }}
+  AWS_DEV_ENDPOINT: {{ printf "http://%s.%s.svc.cluster.local:%d" (default (printf "%s-minio" .Release.Name) .Values.minio.fullnameOverride) (default .Release.Namespace .Values.namespaceOverride) (int .Values.minio.service.port) | quote }}
   AWS_REGION: "us-east-1"
   AWS_STATIC_ASSETS_BUCKET: "static-assets"
   AWS_OPERATIONAL_BUCKET: "operational"
