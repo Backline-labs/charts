@@ -30,24 +30,13 @@ template:
           - name: {{ include "secretname.sessionjwt" . }}
             mountPath: "/var/run/descope"
             readOnly: true
-          - name: shared-storage
-            mountPath: /worker-storage/data
           - name: home-volume
             mountPath: /home/app_user
           - name: tmp-volume
             mountPath: /tmp
-        resources:
-          requests:
-            cpu: 200m
-            memory: 512Mi
-          limits:
-            cpu: 2000m
-            memory: 8Gi
+        resources: {} # Auto filled from resource profiles
     volumes:
       {{- include "adot.volumes" . | nindent 6 }}
-      - name: shared-storage
-        persistentVolumeClaim:
-          claimName: {{ .Values.worker.storage.pvc.name }}
       - name: home-volume
         emptyDir: {}
       - name: tmp-volume
@@ -57,5 +46,3 @@ template:
 {{- define "backline.coderJobSpec" -}}
 {{ include "backline.rawCoderJobSpec" . | fromYaml | toJson }}
 {{- end -}}
-
-

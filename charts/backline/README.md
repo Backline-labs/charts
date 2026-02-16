@@ -11,22 +11,24 @@ graph TB
   end
   subgraph CN["Customer Network"]
       subgraph KC["Kubernetes Cluster"]
-          BAP["Backline Agent Proxy (Deployment)"]
+          BW["Backline Worker (Deployment)"]
           AJJR["AI Agents Job Runner"]
-          BAP -->|Launch Jobs| AJJR
+          MINIO["MinIO (Object Storage)"]
+          BW -->|Launch Jobs| AJJR
+          BW --> MINIO
       end
   end
-    
+
   SCM["Source Code Manager<br/>(GH, GitLab, Bitbucket)"]
   PM["Package Manager<br/>(npm, goproxy, maven,<br/>pip, etc.)"]
-  
-  BAP <-->|HTTPS| BP
+
+  BW <-->|HTTPS| BP
   AJJR --> SCM
   AJJR --> PM
 ```
 
-**Chart Version:** 1.0.1
-**App Version:** 1.0.1
+**Chart Version:** 1.0.2
+**App Version:** 1.0.2
 
 ## Table of Contents
 
@@ -42,9 +44,9 @@ graph TB
     - [Global Configuration](#global-configuration)
     - [Janitor Configuration](#janitor-configuration)
     - [Worker Configuration](#worker-configuration)
-      - [Worker Storage Configuration](#worker-storage-configuration)
       - [Worker OpenTelemetry Configuration](#worker-opentelemetry-configuration)
-  - [Storage Requirements](#storage-requirements)
+    - [MinIO Configuration](#minio-configuration)
+    - [Resource Profiles](#resource-profiles)
   - [Network Policy Recommendations (Egress Whitelist)](#network-policy-recommendations-egress-whitelist)
     - [DNS Resolution](#dns-resolution)
     - [Package Registries](#package-registries)
@@ -63,7 +65,6 @@ graph TB
   - [Upgrading](#upgrading)
   - [Uninstall](#uninstall)
   - [Troubleshooting](#troubleshooting)
-    - [PVC Not Mounting](#pvc-not-mounting)
     - [Worker Pod Not Starting](#worker-pod-not-starting)
     - [Janitor Job Failing](#janitor-job-failing)
     - [Image Pull Errors](#image-pull-errors)
@@ -73,7 +74,6 @@ graph TB
 
 - Kubernetes 1.19+
 - Helm 3.x
-- A storage class that supports `ReadWriteMany` (RWX) access mode (e.g., NFS, EFS, CephFS)
 - External network access to:
   - Backline AI SaaS endpoint
   - Source code management systems (GitHub, GitLab, Bitbucket)
@@ -85,7 +85,8 @@ The chart deploys the following components:
 
 - **Worker**: Main application handling code analysis workloads, AI interactions, and job orchestration
 - **Janitor**: CronJob that performs automated maintenance tasks including JWT token refresh, Docker registry authentication updates, and worker image updates
-- **ADOT Collector**: Sidecar container for exporting logs, traces, and metrics to Backline AI cloud infrastructure.
+- **ADOT Collector**: Sidecar container for exporting logs, traces, and metrics to Backline AI cloud infrastructure
+- **MinIO**: Object storage for static assets and operational data (deployed as a subchart)
 - **Coder Jobs**: Dynamically created Kubernetes Jobs for code execution (template embedded in worker ConfigMap)
 - **Dependabot Upgrader Jobs**: Dynamically created Kubernetes Jobs for dependency updates (template embedded in worker ConfigMap)
 
@@ -103,7 +104,7 @@ helm repo update backline-ai
 helm install backline \
   backline-ai/backline \
   --namespace backline \
-  --version 1.0.1 \
+  --version 1.0.2 \
   --create-namespace \
   --set accessKey='<YOUR ACCESS KEY>'
 ```
@@ -157,9 +158,8 @@ The Worker is the main application component.
 | Parameter                          | Description                                        | Default                                                |
 | ---------------------------------- | -------------------------------------------------- | ------------------------------------------------------ |
 | `worker.replicaCount`              | Number of worker replicas                          | `1`                                                    |
-| `worker.image.registry`            | Container registry                                 | `580550010989.dkr.ecr.us-west-1.amazonaws.com`         |
-| `worker.image.name`                | Image name                                         | `prod-worker`                                          |
-| `worker.image.tag`                 | Image tag                                          | `2faf8c5-1757332651`                                   |
+| `worker.image.name`                | Image name                                         | `prod-runner`                                          |
+| `worker.image.tag`                 | Image tag                                          | `0000001-0000000001`                                   |
 | `worker.image.pullPolicy`          | Image pull policy                                  | `IfNotPresent`                                         |
 | `worker.service.httpPort`          | HTTP service port                                  | `8080`                                                 |
 | `worker.modelName`                 | AI model for code generation tasks                 | `bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0` |
@@ -176,15 +176,6 @@ The Worker is the main application component.
 | `worker.tolerations`               | Tolerations for pod assignment                     | `[]`                                                   |
 | `worker.affinity`                  | Affinity rules for pod assignment                  | `{}`                                                   |
 
-#### Worker Storage Configuration
-
-| Parameter                             | Description                                     | Default          |
-| ------------------------------------- | ----------------------------------------------- | ---------------- |
-| `worker.storage.pvc.create`           | Create PersistentVolumeClaim                    | `true`           |
-| `worker.storage.pvc.name`             | PVC name                                        | `worker-storage` |
-| `worker.storage.pvc.storageClassName` | Storage class name (empty uses cluster default) | `""`             |
-| `worker.storage.pvc.size`             | Storage size                                    | `10Gi`           |
-
 #### Worker OpenTelemetry Configuration
 
 | Parameter                     | Description                      | Default                                                       |
@@ -192,23 +183,48 @@ The Worker is the main application component.
 | `worker.otel.enabled`         | Enable OpenTelemetry             | `true`                                                        |
 | `worker.otel.collector.image` | Image used to run OTEL collector | `public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1` |
 
- 
+### MinIO Configuration
 
-## Storage Requirements
+MinIO provides object storage for static assets and operational data.
 
-The chart requires a PersistentVolume with `ReadWriteMany` (RWX) access mode. This volume is shared between:
+| Parameter                    | Description                            | Default                    |
+| ---------------------------- | -------------------------------------- | -------------------------- |
+| `minio.enabled`              | Enable MinIO subchart                  | `true`                     |
+| `minio.mode`                 | MinIO deployment mode                  | `standalone`               |
+| `minio.rootUser`             | MinIO root username                    | `backline`                 |
+| `minio.rootPassword`         | MinIO root password                    | `backline-minio-password`  |
+| `minio.persistence.enabled`  | Enable persistent storage for MinIO   | `true`                     |
+| `minio.persistence.size`     | MinIO storage size                     | `10Gi`                     |
+| `minio.persistence.storageClass` | Storage class for MinIO PVC       | `""`                       |
+| `minio.resources.requests.cpu` | CPU request                          | `100m`                     |
+| `minio.resources.requests.memory` | Memory request                    | `256Mi`                    |
+| `minio.resources.limits.cpu` | CPU limit                              | `500m`                     |
+| `minio.resources.limits.memory` | Memory limit                        | `512Mi`                    |
+| `minio.buckets`              | List of buckets to create              | `static-assets`, `operational` |
 
-- The Worker deployment
-- Coder job pods (dynamically created for code execution)
-- Dependabot upgrader job pods
+### Resource Profiles
 
-**Important:** Ensure your cluster has a storage class that supports RWX access mode, such as:
-- AWS EFS (via `aws-efs-csi-driver`)
-- NFS
-- CephFS
-- GlusterFS
+Resource profiles define CPU and memory allocations for ephemeral jobs (Coder and Dependabot Upgrader).
 
-If your storage class doesn't support RWX, the pods will fail to mount the volume.
+| Profile   | CPU Request | CPU Limit | Memory Request | Memory Limit |
+| --------- | ----------- | --------- | -------------- | ------------ |
+| `small`   | 500m        | 1000m     | 1Gi            | 2Gi          |
+| `medium`  | 2000m       | 2000m     | 8Gi            | 8Gi          |
+| `large`   | 4000m       | 4000m     | 16Gi           | 16Gi         |
+| `xlarge`  | 8000m       | 8000m     | 32Gi           | 32Gi         |
+
+You can customize these profiles in your values file:
+
+```yaml
+resourceProfiles:
+  small:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+```
 
 ## Network Policy Recommendations (Egress Whitelist)
 
@@ -478,12 +494,22 @@ worker:
     limits:
       cpu: "4000m"
       memory: "4Gi"
-  storage:
-    pvc:
-      size: "50Gi"
   env:
     - name: MODEL_NAME
       value: "anthropic/claude-sonnet-4-20250514"
+
+minio:
+  persistence:
+    size: "50Gi"
+
+resourceProfiles:
+  medium:
+    requests:
+      cpu: "4000m"
+      memory: "16Gi"
+    limits:
+      cpu: "4000m"
+      memory: "16Gi"
 
 environment: "production"
 ```
@@ -520,20 +546,6 @@ helm uninstall backline --namespace backline
 **Note:** The PersistentVolumeClaim may not be automatically deleted if not created by the chart
 
 ## Troubleshooting
-
-### PVC Not Mounting
-
-**Symptom:** Pods stuck in `ContainerCreating` state with events showing volume mount errors.
-
-**Solution:** 
-- Verify your storage class supports `ReadWriteMany` access mode
-- Check if the storage provisioner is running correctly
-- Ensure sufficient storage is available in your cluster
-
-```bash
-kubectl get storageclass
-kubectl describe pvc worker-storage -n backline
-```
 
 ### Worker Pod Not Starting
 
@@ -574,6 +586,7 @@ kubectl logs -n backline job/janitor-<timestamp> -c janitor
 ```bash
 kubectl create job -n backline --from=cronjob/janitor janitor-manual
 ```
+
 ## Support
 
 For issues, questions, or feature requests, please contact [Backline support](mailto:support@backline.ai).

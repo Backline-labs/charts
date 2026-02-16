@@ -3,6 +3,50 @@ accessKey: ""
 environment: "production"
 namespaceOverride: "backline"
 
+# ============================================================================
+# MINIO OBJECT STORAGE (Subchart)
+# ============================================================================
+minio:
+  enabled: true
+  fullnameOverride: minio
+  # Standalone mode (single node)
+  mode: standalone
+  # Root credentials
+  rootUser: "backline"
+  rootPassword: "backline-minio-password"
+  # Persistence configuration
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+  # Resource configuration
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 9000
+  # Disable web console
+  consoleEnabled: false
+  # Default buckets to create
+  buckets:
+    - name: static-assets
+      policy: none
+      purge: false
+      objectlocking: false
+    - name: operational
+      policy: none
+      purge: false
+      objectlocking: false
+  # Post-install job for bucket creation
+  postJob:
+    enabled: true
+
 # Janitor component
 janitor:
   image:
@@ -22,8 +66,8 @@ janitor:
 worker:
   replicaCount: 1
   image:
-    name: prod-worker
-    tag: "2faf8c5-1757332651"
+    name: prod-runner
+    tag: "0000001-0000000001"
     pullPolicy: IfNotPresent
   service:
     httpPort: 8080
@@ -48,12 +92,6 @@ worker:
       port: 8080
     initialDelaySeconds: 5
     periodSeconds: 3
-  storage:
-    pvc:
-      create: true
-      storageClassName: "" # Will use cluster default if empty
-      size: "10Gi"
-      name: "worker-storage"
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -61,3 +99,36 @@ worker:
     enabled: true
     collector:
       image: public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1
+
+# ============================================================================
+# RESOURCE PROFILES FOR EPHEMERAL JOBS
+# ============================================================================
+resourceProfiles:
+  small:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+  medium:
+    requests:
+      cpu: "2000m"
+      memory: "8Gi"
+    limits:
+      cpu: "2000m"
+      memory: "8Gi"
+  large:
+    requests:
+      cpu: "4000m"
+      memory: "16Gi"
+    limits:
+      cpu: "4000m"
+      memory: "16Gi"
+  xlarge:
+    requests:
+      cpu: "8000m"
+      memory: "32Gi"
+    limits:
+      cpu: "8000m"
+      memory: "32Gi"
