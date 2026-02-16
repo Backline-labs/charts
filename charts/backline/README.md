@@ -47,6 +47,15 @@ graph TB
       - [Worker OpenTelemetry Configuration](#worker-opentelemetry-configuration)
     - [MinIO Configuration](#minio-configuration)
     - [Resource Profiles](#resource-profiles)
+  - [Storage Requirements](#storage-requirements)
+  - [Network Policy Recommendations (Egress Whitelist)](#network-policy-recommendations-egress-whitelist)
+    - [DNS Resolution](#dns-resolution)
+    - [Package Registries](#package-registries)
+    - [Container Registries](#container-registries)
+    - [Source Code Managers](#source-code-managers)
+    - [LLM API Access](#llm-api-access)
+    - [AWS Services](#aws-services)
+    - [Custom/Private Registries](#customprivate-registries)
   - [Secret Management](#secret-management)
     - [Static Secrets](#static-secrets)
     - [Dynamic Secrets](#dynamic-secrets)
@@ -216,6 +225,183 @@ resourceProfiles:
     limits:
       cpu: "1000m"
       memory: "2Gi"
+```
+
+## Network Policy Recommendations (Egress Whitelist)
+
+If your organization enforces egress network policies (e.g., using Cilium, Calico, or other CNI-based firewalls), the Backline coder pods require outbound access to various external services for package management, source code access, and LLM API connectivity.
+
+> **Note:** Backline does not manage or enforce these egress policies. This section provides recommendations for your network/security team to configure appropriate whitelists.
+
+### DNS Resolution
+
+DNS resolution is **required** for FQDN-based egress rules to function.
+
+| Target | Port | Protocol | Description |
+|--------|------|----------|-------------|
+| `kube-dns` (kube-system namespace) | 53 | UDP/TCP | Kubernetes internal DNS |
+
+### Package Registries
+
+Coder pods need access to package registries to install dependencies during code execution. Whitelist based on the languages your projects use.
+
+#### JavaScript/Node.js (npm, yarn)
+
+| FQDN | Port | Protocol |
+|------|------|----------|
+| `registry.npmjs.org` | 443 | TCP |
+| `registry.yarnpkg.com` | 443 | TCP |
+| `raw.githubusercontent.com` | 443 | TCP |
+| `nodejs.org` | 443 | TCP |
+| `*.nodejs.org` | 443 | TCP |
+
+#### Python (PyPI, Conda)
+
+| FQDN | Port | Protocol |
+|------|------|----------|
+| `pypi.org` | 443 | TCP |
+| `files.pythonhosted.org` | 443 | TCP |
+| `conda.anaconda.org` | 443 | TCP |
+| `repo.anaconda.com` | 443 | TCP |
+
+#### Java (Maven, Gradle)
+
+| FQDN | Port | Protocol |
+|------|------|----------|
+| `repo.maven.apache.org` | 443 | TCP |
+| `repo1.maven.org` | 443 | TCP |
+| `search.maven.org` | 443 | TCP |
+| `services.gradle.org` | 443 | TCP |
+| `plugins.gradle.org` | 443 | TCP |
+| `downloads.gradle.org` | 443 | TCP |
+
+#### Go Modules
+
+| FQDN | Port | Protocol |
+|------|------|----------|
+| `proxy.golang.org` | 443 | TCP |
+| `sum.golang.org` | 443 | TCP |
+| `storage.googleapis.com` | 443 | TCP |
+| `go.dev` | 443 | TCP |
+
+#### Rust (Cargo/crates.io)
+
+| FQDN | Port | Protocol |
+|------|------|----------|
+| `crates.io` | 443 | TCP |
+| `static.crates.io` | 443 | TCP |
+| `index.crates.io` | 443 | TCP |
+
+### Container Registries
+
+For container image analysis (e.g., via skopeo), whitelist the following registries:
+
+| Registry | FQDNs | Port | Protocol |
+|----------|-------|------|----------|
+| **Docker Hub** | `docker.io`, `*.docker.io`, `production.cloudflare.docker.com` | 443 | TCP |
+| **Google (GCR/Artifact Registry)** | `gcr.io`, `*.gcr.io`, `*.pkg.dev` | 443 | TCP |
+| **GitHub Container Registry** | `ghcr.io` | 443 | TCP |
+| **Quay.io** | `quay.io` | 443 | TCP |
+| **Azure Container Registry** | `*.azurecr.io` | 443 | TCP |
+
+### Source Code Managers
+
+Access to SCM platforms for cloning repositories and fetching code.
+
+| Platform | FQDNs | Ports | Protocol |
+|----------|-------|-------|----------|
+| **GitHub** | `github.com`, `*.github.com` | 443, 22 | TCP |
+| **GitLab** | `gitlab.com`, `*.gitlab.com` | 443, 22 | TCP |
+| **Bitbucket** | `bitbucket.org`, `*.bitbucket.org` | 443, 22 | TCP |
+
+> **Note:** Port 22 is required for SSH-based git operations. If your organization uses HTTPS-only, port 443 is sufficient.
+
+### LLM API Access
+
+For direct LLM API access (when not using the internal LiteLLM proxy):
+
+| Provider | FQDN | Port | Protocol |
+|----------|------|------|----------|
+| **Anthropic** | `api.anthropic.com` | 443 | TCP |
+
+### AWS Services
+
+#### AWS ECR (Elastic Container Registry)
+
+If pulling images from AWS ECR, whitelist the following pattern for each region you use:
+
+```
+<account-id>.dkr.ecr.<region>.amazonaws.com
+```
+
+**Common regions to consider:**
+
+| Region | ECR Endpoint Pattern |
+|--------|---------------------|
+| us-east-1 | `*.dkr.ecr.us-east-1.amazonaws.com` |
+| us-east-2 | `*.dkr.ecr.us-east-2.amazonaws.com` |
+| us-west-1 | `*.dkr.ecr.us-west-1.amazonaws.com` |
+| us-west-2 | `*.dkr.ecr.us-west-2.amazonaws.com` |
+| eu-west-1 | `*.dkr.ecr.eu-west-1.amazonaws.com` |
+| eu-west-2 | `*.dkr.ecr.eu-west-2.amazonaws.com` |
+| eu-central-1 | `*.dkr.ecr.eu-central-1.amazonaws.com` |
+| ap-southeast-1 | `*.dkr.ecr.ap-southeast-1.amazonaws.com` |
+| ap-northeast-1 | `*.dkr.ecr.ap-northeast-1.amazonaws.com` |
+
+### Custom/Private Registries
+
+If your organization uses private package registries, add them to your whitelist:
+
+#### JFrog Artifactory
+
+| FQDN | Port | Protocol |
+|------|------|----------|
+| `*.jfrog.io` | 443 | TCP |
+
+#### Other Private Registries
+
+Add your organization-specific registries as needed:
+
+```yaml
+# Example for internal registries
+- matchName: "registry.internal.company.com"
+- matchName: "nexus.internal.company.com"
+- matchName: "artifactory.internal.company.com"
+```
+
+### Quick Reference: Minimal Egress Whitelist
+
+For a minimal installation, ensure at least the following are whitelisted:
+
+| Category | Essential FQDNs |
+|----------|-----------------|
+| **DNS** | kube-dns (internal) |
+| **Backline Cloud** | Backline SaaS endpoint (provided during onboarding) |
+| **SCM** | Your SCM provider (github.com, gitlab.com, or bitbucket.org) |
+| **Package Registries** | Based on your tech stack (see above) |
+
+### Troubleshooting Network Policy Issues
+
+**Symptom:** Coder jobs failing with network timeout errors.
+
+**Solution:**
+1. Check if egress policies are blocking required domains
+2. Review pod logs for connection refused or timeout errors:
+
+```bash
+kubectl logs -n backline job/<coder-job-name>
+```
+
+3. Verify DNS resolution is working:
+
+```bash
+kubectl run -n backline dns-test --rm -it --image=busybox -- nslookup github.com
+```
+
+4. Test connectivity to specific endpoints:
+
+```bash
+kubectl run -n backline net-test --rm -it --image=curlimages/curl -- curl -I https://registry.npmjs.org
 ```
 
 ## Secret Management
