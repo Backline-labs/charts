@@ -26,8 +26,21 @@ true
   For Jobs: only include sidecar on K8s 1.29+ where native sidecars are supported.
   This prevents Jobs from hanging as the sidecar will auto-terminate when main container completes.
   For Deployments: always include the sidecar regardless of K8s version.
+
+  Parameters (passed via merge/dict):
+    - component: name of the component for configmap reference (default: "worker")
+    - otelImage: OTEL collector image override (default: .Values.worker.otel.collector.image)
+    - isJob: whether this is a Job (affects K8s version gating and restartPolicy)
 */ -}}
 {{- $isJob := and (hasKey . "isJob") .isJob -}}
+{{- $component := "worker" -}}
+{{- if hasKey . "component" -}}
+  {{- $component = .component -}}
+{{- end -}}
+{{- $otelImage := .Values.worker.otel.collector.image -}}
+{{- if hasKey . "otelImage" -}}
+  {{- $otelImage = .otelImage -}}
+{{- end -}}
 {{- $includeContainer := not $isJob -}}
 {{- if $isJob -}}
   {{- $includeContainer = include "adot.isK8sVersionGte129" . -}}
@@ -37,7 +50,7 @@ true
   {{- if $isJob }}
   restartPolicy: Always
   {{- end }}
-  image: {{ .Values.worker.otel.collector.image }}
+  image: {{ $otelImage }}
   args: ["--config=/etc/otel/config.yaml"]
   ports:
     - containerPort: 4317
@@ -62,7 +75,7 @@ true
     - name: LOG_STREAM_NAME
       valueFrom:
         configMapKeyRef:
-          name: worker
+          name: {{ $component }}
           key: LOG_STREAM_NAME
   securityContext:
     allowPrivilegeEscalation: false

@@ -66,3 +66,11 @@ capabilities:
   drop:
     - ALL
 {{- end -}}
+
+{{- define "gitproxy.image.registry" -}}
+{{- if eq .Values.environment "staging" -}}
+580550010989.dkr.ecr.us-west-1.amazonaws.com
+{{- else -}}
+314146328431.dkr.ecr.us-east-1.amazonaws.com
+{{- end -}}
+{{- end -}}

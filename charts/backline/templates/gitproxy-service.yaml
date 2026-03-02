@@ -1,0 +1,16 @@
+{{- if .Values.gitproxy.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitproxy
+  namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.gitproxy.service.httpPort }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: gitproxy
+{{- end }}

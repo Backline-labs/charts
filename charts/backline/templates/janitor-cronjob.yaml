@@ -191,7 +191,22 @@ spec:
                 cm_changed=0
               fi
 
-              echo "[4/4] Worker image updater"
+              {{- if .Values.gitproxy.enabled }}
+              # Update gitproxy ConfigMap LOG_STREAM_NAME if changed
+              GP_CM_JSON=$(kubectl -n "$NAMESPACE" get configmap gitproxy -o json)
+              GP_CURRENT=$(echo "$GP_CM_JSON" | jq -r '.data.LOG_STREAM_NAME // empty')
+              if [ "$GP_CURRENT" != "$DCT" ]; then
+                echo "Updating gitproxy ConfigMap LOG_STREAM_NAME to $DCT"
+                echo "$GP_CM_JSON" | jq --arg v "$DCT" '.data.LOG_STREAM_NAME = $v' | kubectl apply -f -
+                gp_cm_changed=1
+              else
+                echo "GitProxy LOG_STREAM_NAME already up-to-date ($GP_CURRENT)"
+                gp_cm_changed=0
+              fi
+              {{- end }}
+
+              echo "[4/{{ if .Values.gitproxy.enabled }}5{{ else }}4{{ end }}] Worker image updater"
+              (
               NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
               DEPLOYMENT_NAME=worker
               CONTAINER_NAME=worker
@@ -242,4 +257,63 @@ spec:
                 echo "Restarting $DEPLOYMENT_NAME to pick up ConfigMap change"
                 kubectl -n "$NAMESPACE" rollout restart deployment "$DEPLOYMENT_NAME"
               fi
+              ) || true
+
+              {{- if .Values.gitproxy.enabled }}
+              echo "[5/5] GitProxy image updater"
+              (
+              NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+              DEPLOYMENT_NAME=gitproxy
+              CONTAINER_NAME=gitproxy
+              REGISTRY={{ include "gitproxy.image.registry" . }}
+              REPOSITORY={{ $.Values.gitproxy.image.name }}
+
+              CONFIG_PATH=/tmp/config.json
+              if [ ! -s "$CONFIG_PATH" ]; then echo "dockerconfig not available"; exit 1; fi
+
+              AUTH=$(jq -r --arg host "$REGISTRY" '.auths[$host].auth // empty' "$CONFIG_PATH")
+              if [ -z "$AUTH" ]; then
+                AUTH=$(jq -r '.auths | to_entries[0].value.auth // empty' "$CONFIG_PATH")
+              fi
+              if [ -z "$AUTH" ]; then echo "registry auth not found in dockerconfig"; exit 1; fi
+
+              CURRENT_IMAGE=$(kubectl -n "$NAMESPACE" get deployment "$DEPLOYMENT_NAME" -o jsonpath='{.spec.template.spec.containers[?(@.name=="'"$CONTAINER_NAME"'")].image}')
+              CURRENT_TAG=${CURRENT_IMAGE##*:}
+              if [ -z "$CURRENT_TAG" ]; then echo "failed to resolve current tag"; exit 1; fi
+
+              http_request GET "https://$REGISTRY/v2/$REPOSITORY/tags/list" -H "Authorization: Basic $AUTH"
+              TAGS_JSON="$HTTP_BODY"
+              if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ] || [ -z "$TAGS_JSON" ] || [ "$(echo "$TAGS_JSON" | jq -r '.errors? // empty')" != "" ]; then
+                echo "failed to list tags ($HTTP_STATUS): $TAGS_JSON"; exit 1;
+              fi
+
+              NEW_TAG=$(echo "$TAGS_JSON" | jq -r '[.tags[] | select(test("-[0-9]+$")) | {tag: ., ticks: (capture("(?<ticks>[0-9]+)$").ticks | tonumber)}] | if length==0 then "" else (max_by(.ticks).tag) end')
+              if [ -z "$NEW_TAG" ]; then echo "no tags with ticks suffix found"; exit 0; fi
+
+              cm_changed=${gp_cm_changed:-0}
+              if [ "$NEW_TAG" = "$CURRENT_TAG" ] && [ "${cm_changed:-0}" -eq 0 ]; then
+                echo "gitproxy image already at latest tag: $CURRENT_TAG and no config change"; exit 0;
+              fi
+
+              CURRENT_TICKS=${CURRENT_TAG##*-}
+              NEW_TICKS=${NEW_TAG##*-}
+              if ! echo "$CURRENT_TICKS" | grep -Eq '^[0-9]+$'; then echo "current tag ($CURRENT_TAG) does not have numeric ticks; skipping"; exit 0; fi
+              if ! echo "$NEW_TICKS" | grep -Eq '^[0-9]+$'; then echo "discovered tag ($NEW_TAG) missing numeric ticks; skipping"; exit 0; fi
+              if [ "$NEW_TICKS" -le "$CURRENT_TICKS" ]; then
+                echo "discovered tag ($NEW_TAG) not newer by ticks than current ($CURRENT_TAG); skipping"; exit 0;
+              fi
+
+              NEW_IMAGE="$REGISTRY/$REPOSITORY:$NEW_TAG"
+              if [ "$NEW_TAG" != "$CURRENT_TAG" ]; then
+                echo "Updating $DEPLOYMENT_NAME container $CONTAINER_NAME to $NEW_IMAGE"
+                kubectl -n "$NAMESPACE" set image deployment/$DEPLOYMENT_NAME $CONTAINER_NAME="$NEW_IMAGE"
+                cm_changed=1
+              fi
+              if [ "${cm_changed:-0}" -eq 1 ]; then
+                echo "Restarting $DEPLOYMENT_NAME to pick up ConfigMap change"
+                kubectl -n "$NAMESPACE" rollout restart deployment "$DEPLOYMENT_NAME"
+              fi
+              ) || true
+              {{- end }}
+
               } 2>&1 | tee -a "$LOG_FILE"
