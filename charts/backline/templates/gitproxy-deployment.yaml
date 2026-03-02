@@ -30,7 +30,7 @@ spec:
     {{- end}}
       containers:
         - name: gitproxy
-          image: "{{ include "gitproxy.image.registry" . }}/{{ .Values.gitproxy.image.name }}:{{ .Values.gitproxy.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "image.registry" . }}/{{ .Values.gitproxy.image.name }}:{{ .Values.gitproxy.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.gitproxy.image.pullPolicy }}
           securityContext:
             {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 12 }}
