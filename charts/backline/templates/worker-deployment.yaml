@@ -7,6 +7,7 @@ metadata:
     app: worker
   annotations:
     checksum/config: {{(include (print $.Template.BasePath "/worker-configmap.yaml") . | sha256sum) | quote }}
+    checksum/adapter-config: {{(include (print $.Template.BasePath "/adapter-configmap.yaml") . | sha256sum) | quote }}
 spec:
   replicas: {{ .Values.worker.replicaCount }}
   selector:
@@ -28,7 +29,7 @@ spec:
     {{- end}}
       containers:
         - name: worker
-          image: "{{ include "worker.image.registry" . }}/{{ .Values.worker.image.name }}:{{ .Values.worker.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "image.registry" . }}/{{ .Values.worker.image.name }}:{{ .Values.worker.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
           securityContext:
             {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 12 }}
@@ -43,6 +44,8 @@ spec:
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
           envFrom:
+            - configMapRef:
+                name: adapter-config
             - configMapRef:
                 name: worker
             {{- if and .Values.worker.envFromSecrets (gt (len .Values.worker.envFromSecrets) 0) }}

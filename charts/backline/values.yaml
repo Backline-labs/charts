@@ -101,6 +101,51 @@ worker:
       image: public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1
 
 # ============================================================================
+# GITPROXY COMPONENT (On-prem git server connectivity)
+# ============================================================================
+gitproxy:
+  enabled: false
+  replicaCount: 1
+  image:
+    name: prod-gitproxy
+    tag: "0000001-0000000001"
+    pullPolicy: IfNotPresent
+  service:
+    httpPort: 8080
+  adapter:
+    skipCertVerification: false
+    maxRetries: 3
+    retryDelay: "1s"
+  temporal:
+    maxConcurrentActivities: 20
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+  readinessProbe:
+    httpGet:
+      path: /readiness
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 3
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  otel:
+    enabled: true
+    collector:
+      image: public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1
+
+# ============================================================================
 # RESOURCE PROFILES FOR EPHEMERAL JOBS
 # ============================================================================
 resourceProfiles:

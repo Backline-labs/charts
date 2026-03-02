@@ -1,0 +1,77 @@
+{{- if .Values.gitproxy.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitproxy
+  namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+  labels:
+    app: gitproxy
+  annotations:
+    checksum/config: {{(include (print $.Template.BasePath "/gitproxy-configmap.yaml") . | sha256sum) | quote }}
+    checksum/adapter-config: {{(include (print $.Template.BasePath "/adapter-configmap.yaml") . | sha256sum) | quote }}
+spec:
+  replicas: {{ .Values.gitproxy.replicaCount }}
+  selector:
+    matchLabels:
+      app: gitproxy
+  template:
+    metadata:
+      labels:
+        app: gitproxy
+    spec:
+      serviceAccountName: gitproxy
+      imagePullSecrets:
+        - name: {{ include "secretname.dockerconfig" . }}
+      securityContext:
+      {{- include "common.podSecurityContext" . | nindent 8 }}
+    {{- if include "adot.isK8sVersionGte129" .}}
+      initContainers:
+        {{- include "adot.sidecar" (merge (dict "isJob" true "otelImage" .Values.gitproxy.otel.collector.image) .)  | nindent 8 -}}
+    {{- end}}
+      containers:
+        - name: gitproxy
+          image: "{{ include "image.registry" . }}/{{ .Values.gitproxy.image.name }}:{{ .Values.gitproxy.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.gitproxy.image.pullPolicy }}
+          securityContext:
+            {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.gitproxy.service.httpPort }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.gitproxy.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.gitproxy.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.gitproxy.resources | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: adapter-config
+            - configMapRef:
+                name: gitproxy
+          env:
+            - name: ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: accesskey
+                  key: ACCESS_KEY
+          volumeMounts:
+            {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 12 }}
+        {{- if not (include "adot.isK8sVersionGte129" .) }}
+        {{- include "adot.sidecar" (merge (dict "otelImage" .Values.gitproxy.otel.collector.image) .) | nindent 8 }}
+        {{- end }}
+      volumes:
+      {{- include "adot.volumes" . | nindent 8 }}
+      {{- with .Values.gitproxy.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gitproxy.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gitproxy.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

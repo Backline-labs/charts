@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adapter-config
+  namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+data:
+  ADAPTER_ENABLED: "true"
+  ADAPTER_BASE_URL: {{ printf "%s/api/adapter/v1" (include "baseUrl" .) | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
+  OTEL_EXPORTER_OTLP_HOST: "localhost"
+  OTEL_EXPORTER_OTLP_PORT: "4317"
+  LOG_FILE_ENABLED: "true"
+  LOG_STREAM_NAME: "" # Set by janitor

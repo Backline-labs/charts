@@ -1,0 +1,14 @@
+{{- if .Values.gitproxy.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitproxy
+  namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+data:
+  ADAPTER_SKIP_CERT_VERIFICATION: {{ .Values.gitproxy.adapter.skipCertVerification | quote }}
+  ADAPTER_MAX_RETRIES: {{ .Values.gitproxy.adapter.maxRetries | quote }}
+  ADAPTER_RETRY_DELAY: {{ .Values.gitproxy.adapter.retryDelay | quote }}
+  TEMPORAL_MAX_CONCURRENT_ACTIVITIES: {{ .Values.gitproxy.temporal.maxConcurrentActivities | quote }}
+  WITH_TELEMETRY: {{ .Values.gitproxy.otel.enabled | quote }}
+  LOG_FILE_PATH: {{ printf "%s/gitproxy.log" (include "logging.dir" .) | quote }}
+{{- end }}
