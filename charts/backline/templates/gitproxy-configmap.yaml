@@ -5,17 +5,10 @@ metadata:
   name: gitproxy
   namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
 data:
-  ADAPTER_ENABLED: "true"
-  ADAPTER_BASE_URL: {{ printf "%s/api/adapter/v1" (include "baseUrl" .) | quote }}
   ADAPTER_SKIP_CERT_VERIFICATION: {{ .Values.gitproxy.adapter.skipCertVerification | quote }}
   ADAPTER_MAX_RETRIES: {{ .Values.gitproxy.adapter.maxRetries | quote }}
   ADAPTER_RETRY_DELAY: {{ .Values.gitproxy.adapter.retryDelay | quote }}
   TEMPORAL_MAX_CONCURRENT_ACTIVITIES: {{ .Values.gitproxy.temporal.maxConcurrentActivities | quote }}
   WITH_TELEMETRY: {{ .Values.gitproxy.otel.enabled | quote }}
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
-  OTEL_EXPORTER_OTLP_HOST: "localhost"
-  OTEL_EXPORTER_OTLP_PORT: "4317"
-  LOG_FILE_ENABLED: "true"
   LOG_FILE_PATH: {{ printf "%s/gitproxy.log" (include "logging.dir" .) | quote }}
-  LOG_STREAM_NAME: "" # Set by janitor
 {{- end }}

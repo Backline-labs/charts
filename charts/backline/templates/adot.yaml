@@ -28,15 +28,10 @@ true
   For Deployments: always include the sidecar regardless of K8s version.
 
   Parameters (passed via merge/dict):
-    - component: name of the component for configmap reference (default: "worker")
     - otelImage: OTEL collector image override (default: .Values.worker.otel.collector.image)
     - isJob: whether this is a Job (affects K8s version gating and restartPolicy)
 */ -}}
 {{- $isJob := and (hasKey . "isJob") .isJob -}}
-{{- $component := "worker" -}}
-{{- if hasKey . "component" -}}
-  {{- $component = .component -}}
-{{- end -}}
 {{- $otelImage := .Values.worker.otel.collector.image -}}
 {{- if hasKey . "otelImage" -}}
   {{- $otelImage = .otelImage -}}
@@ -75,7 +70,7 @@ true
     - name: LOG_STREAM_NAME
       valueFrom:
         configMapKeyRef:
-          name: {{ $component }}
+          name: adapter-config
           key: LOG_STREAM_NAME
   securityContext:
     allowPrivilegeEscalation: false

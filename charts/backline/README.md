@@ -12,23 +12,27 @@ graph TB
   subgraph CN["Customer Network"]
       subgraph KC["Kubernetes Cluster"]
           BW["Backline Worker (Deployment)"]
+          GP["GitProxy (Deployment)"]
           AJJR["AI Agents Job Runner"]
           MINIO["MinIO (Object Storage)"]
           BW -->|Launch Jobs| AJJR
           BW --> MINIO
       end
+      ONPREM_SCM["On-Prem Git Server<br/>(Bitbucket DC)"]
   end
 
-  SCM["Source Code Manager<br/>(GH, GitLab, Bitbucket)"]
+  SCM["Cloud SCM<br/>(GH, GitLab, Bitbucket Cloud)"]
   PM["Package Manager<br/>(npm, goproxy, maven,<br/>pip, etc.)"]
 
   BW <-->|HTTPS| BP
+  GP <-->|HTTPS| BP
+  GP <-->|REST API| ONPREM_SCM
   AJJR --> SCM
   AJJR --> PM
 ```
 
-**Chart Version:** 1.0.2
-**App Version:** 1.0.2
+**Chart Version:** 1.1.0
+**App Version:** 1.1.0
 
 ## Table of Contents
 
@@ -45,6 +49,7 @@ graph TB
     - [Janitor Configuration](#janitor-configuration)
     - [Worker Configuration](#worker-configuration)
       - [Worker OpenTelemetry Configuration](#worker-opentelemetry-configuration)
+    - [GitProxy Configuration](#gitproxy-configuration)
     - [MinIO Configuration](#minio-configuration)
     - [Resource Profiles](#resource-profiles)
   - [Network Policy Recommendations (Egress Whitelist)](#network-policy-recommendations-egress-whitelist)
@@ -84,7 +89,8 @@ graph TB
 The chart deploys the following components:
 
 - **Worker**: Main application handling code analysis workloads, AI interactions, and job orchestration
-- **Janitor**: CronJob that performs automated maintenance tasks including JWT token refresh, Docker registry authentication updates, and worker image updates
+- **GitProxy** *(optional)*: Enables Backline to work with on-prem git servers (e.g., Bitbucket Data Center) by proxying git API operations. Runs on the customer network and makes outbound-only connections to Backline cloud. Disabled by default
+- **Janitor**: CronJob that performs automated maintenance tasks including JWT token refresh, Docker registry authentication updates, and worker/gitproxy image updates
 - **ADOT Collector**: Sidecar container for exporting logs, traces, and metrics to Backline AI cloud infrastructure
 - **MinIO**: Object storage for static assets and operational data (deployed as a subchart)
 - **Coder Jobs**: Dynamically created Kubernetes Jobs for code execution (template embedded in worker ConfigMap)
@@ -104,7 +110,7 @@ helm repo update backline-ai
 helm install backline \
   backline-ai/backline \
   --namespace backline \
-  --version 1.0.2 \
+  --version 1.1.0 \
   --create-namespace \
   --set accessKey='<YOUR ACCESS KEY>'
 ```
@@ -182,6 +188,40 @@ The Worker is the main application component.
 | ----------------------------- | -------------------------------- | ------------------------------------------------------------- |
 | `worker.otel.enabled`         | Enable OpenTelemetry             | `true`                                                        |
 | `worker.otel.collector.image` | Image used to run OTEL collector | `public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1` |
+
+### GitProxy Configuration
+
+GitProxy enables Backline to interact with on-prem git servers that are not accessible from the internet. It runs on the customer's network and communicates with Backline cloud via outbound HTTPS connections. No additional credentials are needed — GitProxy uses the same `accessKey` as the Worker.
+
+| Parameter | Description | Default |
+| --- | --- | --- |
+| `gitproxy.enabled` | Enable GitProxy component | `false` |
+| `gitproxy.replicaCount` | Number of GitProxy replicas | `1` |
+| `gitproxy.image.name` | Image name | `prod-gitproxy` |
+| `gitproxy.image.tag` | Image tag | `0000001-0000000001` |
+| `gitproxy.image.pullPolicy` | Image pull policy | `IfNotPresent` |
+| `gitproxy.adapter.skipCertVerification` | Skip TLS verification for adapter connection | `false` |
+| `gitproxy.adapter.maxRetries` | Max retries for adapter HTTP calls | `3` |
+| `gitproxy.adapter.retryDelay` | Delay between retries | `1s` |
+| `gitproxy.temporal.maxConcurrentActivities` | Max concurrent git operations | `20` |
+| `gitproxy.resources.requests.cpu` | CPU request | `250m` |
+| `gitproxy.resources.requests.memory` | Memory request | `256Mi` |
+| `gitproxy.resources.limits.cpu` | CPU limit | `500m` |
+| `gitproxy.resources.limits.memory` | Memory limit | `512Mi` |
+| `gitproxy.otel.enabled` | Enable OpenTelemetry | `true` |
+| `gitproxy.otel.collector.image` | OTEL collector image | `public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1` |
+| `gitproxy.nodeSelector` | Node selector for pod assignment | `{}` |
+| `gitproxy.tolerations` | Tolerations for pod assignment | `[]` |
+| `gitproxy.affinity` | Affinity rules for pod assignment | `{}` |
+
+**Enabling GitProxy:**
+
+```bash
+helm upgrade backline backline-ai/backline \
+  --namespace backline \
+  --reuse-values \
+  --set gitproxy.enabled=true
+```
 
 ### MinIO Configuration
 
@@ -512,6 +552,10 @@ resourceProfiles:
       memory: "16Gi"
 
 environment: "production"
+
+# Enable GitProxy for on-prem git server connectivity
+gitproxy:
+  enabled: true
 ```
 
 

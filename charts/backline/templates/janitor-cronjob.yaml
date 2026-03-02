@@ -179,31 +179,17 @@ spec:
               # Sanitize for CWL restrictions (no colon or asterisk)
               DCT=$(echo "$DCT" | tr -d ':' | tr -d '*')
 
-              # Update worker ConfigMap LOG_STREAM_NAME if changed
-              CM_JSON=$(kubectl -n "$NAMESPACE" get configmap worker -o json)
+              # Update adapter-config ConfigMap LOG_STREAM_NAME if changed
+              CM_JSON=$(kubectl -n "$NAMESPACE" get configmap adapter-config -o json)
               CURRENT=$(echo "$CM_JSON" | jq -r '.data.LOG_STREAM_NAME // empty')
               if [ "$CURRENT" != "$DCT" ]; then
-                echo "Updating worker ConfigMap LOG_STREAM_NAME to $DCT"
+                echo "Updating adapter-config ConfigMap LOG_STREAM_NAME to $DCT"
                 echo "$CM_JSON" | jq --arg v "$DCT" '.data.LOG_STREAM_NAME = $v' | kubectl apply -f -
                 cm_changed=1
               else
                 echo "LOG_STREAM_NAME already up-to-date ($CURRENT)"
                 cm_changed=0
               fi
-
-              {{- if .Values.gitproxy.enabled }}
-              # Update gitproxy ConfigMap LOG_STREAM_NAME if changed
-              GP_CM_JSON=$(kubectl -n "$NAMESPACE" get configmap gitproxy -o json)
-              GP_CURRENT=$(echo "$GP_CM_JSON" | jq -r '.data.LOG_STREAM_NAME // empty')
-              if [ "$GP_CURRENT" != "$DCT" ]; then
-                echo "Updating gitproxy ConfigMap LOG_STREAM_NAME to $DCT"
-                echo "$GP_CM_JSON" | jq --arg v "$DCT" '.data.LOG_STREAM_NAME = $v' | kubectl apply -f -
-                gp_cm_changed=1
-              else
-                echo "GitProxy LOG_STREAM_NAME already up-to-date ($GP_CURRENT)"
-                gp_cm_changed=0
-              fi
-              {{- end }}
 
               echo "[4/{{ if .Values.gitproxy.enabled }}5{{ else }}4{{ end }}] Worker image updater"
               (
@@ -290,7 +276,6 @@ spec:
               NEW_TAG=$(echo "$TAGS_JSON" | jq -r '[.tags[] | select(test("-[0-9]+$")) | {tag: ., ticks: (capture("(?<ticks>[0-9]+)$").ticks | tonumber)}] | if length==0 then "" else (max_by(.ticks).tag) end')
               if [ -z "$NEW_TAG" ]; then echo "no tags with ticks suffix found"; exit 0; fi
 
-              cm_changed=${gp_cm_changed:-0}
               if [ "$NEW_TAG" = "$CURRENT_TAG" ] && [ "${cm_changed:-0}" -eq 0 ]; then
                 echo "gitproxy image already at latest tag: $CURRENT_TAG and no config change"; exit 0;
               fi
