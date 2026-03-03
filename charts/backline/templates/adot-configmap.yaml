@@ -16,10 +16,25 @@ data:
         include_file_path: true
         operators:
           - type: json_parser
-            timestamp:
-              parse_from: attributes.ts
-              layout_type: gotime
-              layout: '2006-01-02T15:04:05.999999999Z07:00'
+          - type: router
+            routes:
+              - output: parse_ts_iso
+                expr: 'attributes.ts != nil and attributes.ts matches "T"'
+            default: parse_ts_simple
+          - type: time_parser
+            id: parse_ts_iso
+            parse_from: attributes.ts
+            layout_type: gotime
+            layout: '2006-01-02T15:04:05.999999999Z07:00'
+            output: ts_parsed
+          - type: time_parser
+            id: parse_ts_simple
+            parse_from: attributes.ts
+            layout_type: gotime
+            layout: '2006-01-02 15:04:05'
+            output: ts_parsed
+          - type: noop
+            id: ts_parsed
         start_at: end
     processors:
       # Align with SaaS collector: prepare for future placeholder support by adding service.name
