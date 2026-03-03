@@ -191,7 +191,7 @@ spec:
                 cm_changed=0
               fi
 
-              echo "[4/{{ if .Values.gitproxy.enabled }}5{{ else }}4{{ end }}] Worker image updater"
+              echo "[4/{{ if ((.Values.gitproxy).enabled) }}5{{ else }}4{{ end }}] Worker image updater"
               (
               NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
               DEPLOYMENT_NAME=worker
@@ -245,7 +245,7 @@ spec:
               fi
               ) || true
 
-              {{- if .Values.gitproxy.enabled }}
+              {{- if ((.Values.gitproxy).enabled) }}
               echo "[5/5] GitProxy image updater"
               (
               NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
