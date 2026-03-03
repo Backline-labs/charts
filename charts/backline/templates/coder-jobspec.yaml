@@ -25,6 +25,8 @@ template:
         env:
           - name: AUTH_TOKEN_FILE
             value: "/var/run/descope/token"
+          - name: LOG_FILE
+            value: {{ printf "%s/coder.log" (include "logging.dir" .) | quote }}
         volumeMounts:
           {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 10 }}
           - name: {{ include "secretname.sessionjwt" . }}

@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.1.0
+**Chart Version:** 1.1.1
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -55,11 +55,21 @@ graph TB
   - [Network Policy Recommendations (Egress Whitelist)](#network-policy-recommendations-egress-whitelist)
     - [DNS Resolution](#dns-resolution)
     - [Package Registries](#package-registries)
+      - [JavaScript/Node.js (npm, yarn)](#javascriptnodejs-npm-yarn)
+      - [Python (PyPI, Conda)](#python-pypi-conda)
+      - [Java (Maven, Gradle)](#java-maven-gradle)
+      - [Go Modules](#go-modules)
+      - [Rust (Cargo/crates.io)](#rust-cargocratesio)
     - [Container Registries](#container-registries)
     - [Source Code Managers](#source-code-managers)
     - [LLM API Access](#llm-api-access)
     - [AWS Services](#aws-services)
+      - [AWS ECR (Elastic Container Registry)](#aws-ecr-elastic-container-registry)
     - [Custom/Private Registries](#customprivate-registries)
+      - [JFrog Artifactory](#jfrog-artifactory)
+      - [Other Private Registries](#other-private-registries)
+    - [Quick Reference: Minimal Egress Whitelist](#quick-reference-minimal-egress-whitelist)
+    - [Troubleshooting Network Policy Issues](#troubleshooting-network-policy-issues)
   - [Secret Management](#secret-management)
     - [Static Secrets](#static-secrets)
     - [Dynamic Secrets](#dynamic-secrets)
@@ -110,7 +120,7 @@ helm repo update backline-ai
 helm install backline \
   backline-ai/backline \
   --namespace backline \
-  --version 1.1.0 \
+  --version 1.1.1 \
   --create-namespace \
   --set accessKey='<YOUR ACCESS KEY>'
 ```
