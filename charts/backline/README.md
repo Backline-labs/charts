@@ -93,6 +93,7 @@ graph TB
   - Backline AI SaaS endpoint
   - Source code management systems (GitHub, GitLab, Bitbucket)
   - Package managers (npm, Go modules, Maven, pip, etc.)
+  - See more in the Network Policy Recommendations section below
 
 ## Architecture
 
@@ -289,6 +290,9 @@ DNS resolution is **required** for FQDN-based egress rules to function.
 | Target | Port | Protocol | Description |
 |--------|------|----------|-------------|
 | `kube-dns` (kube-system namespace) | 53 | UDP/TCP | Kubernetes internal DNS |
+
+### Backline
+All pods need access to the Backline AI SaaS endpoint. Please reach out to your Backline contact person to obtain the list of relevant IPs for your tenant.
 
 ### Package Registries
 
