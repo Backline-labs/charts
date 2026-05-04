@@ -46,6 +46,7 @@ spec:
               DOCKERCONFIG_SECRET={{ include "secretname.dockerconfig" . }}
               JWT_MAX_AGE_MINUTES=3
               DOCKERCONFIG_MAX_AGE_HOURS=8
+              TOTAL_STEPS={{ include "janitor.totalSteps" . }}
 
               now_epoch() {
                 date -u +%s
@@ -109,7 +110,7 @@ spec:
                 rm -f "$tmpfile"
               }
 
-              echo "[1/4] JWT refresh check"
+              echo "[1/$TOTAL_STEPS] JWT refresh check"
               if needs_refresh_minutes "$JWT_SECRET" "$JWT_MAX_AGE_MINUTES"; then
                 echo "Refreshing JWT secret $JWT_SECRET"
                 if [ -z "${ACCESS_KEY:-}" ]; then echo "accessKey missing"; exit 1; fi
@@ -125,7 +126,7 @@ spec:
                 echo "JWT secret is fresh; skipping refresh"
               fi
 
-              echo "[2/4] Dockerconfig refresh check"
+              echo "[2/$TOTAL_STEPS] Dockerconfig refresh check"
               # Load JWT value either from earlier refresh or from existing secret
               if [ -z "${JWT:-}" ]; then
                 if kubectl -n "$NAMESPACE" get secret "$JWT_SECRET" >/dev/null 2>&1; then
@@ -151,7 +152,7 @@ spec:
                 kubectl -n "$NAMESPACE" get secret "$DOCKERCONFIG_SECRET" -o json | jq -r '.data[".dockerconfigjson"]' | base64 -d > /tmp/config.json
               fi
 
-              echo "[3/4] LOG_STREAM_NAME updater from JWT dct"
+              echo "[3/$TOTAL_STEPS] LOG_STREAM_NAME updater from JWT dct"
               # Ensure JWT value available
               if [ -z "${JWT:-}" ]; then
                 if kubectl -n "$NAMESPACE" get secret "$JWT_SECRET" >/dev/null 2>&1; then
@@ -191,7 +192,7 @@ spec:
                 cm_changed=0
               fi
 
-              echo "[4/{{ if ((.Values.gitproxy).enabled) }}5{{ else }}4{{ end }}] Worker image updater"
+              echo "[4/$TOTAL_STEPS] Worker image updater"
               (
               NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
               DEPLOYMENT_NAME=worker
@@ -245,8 +246,39 @@ spec:
               fi
               ) || true
 
+              echo "[5/$TOTAL_STEPS] Langfuse config sync"
+              LANGFUSE_SECRET={{ include "secretname.langfuse" . }}
+              LANGFUSE_MAX_AGE_HOURS=8
+
+              if needs_refresh_hours "$LANGFUSE_SECRET" "$LANGFUSE_MAX_AGE_HOURS"; then
+                echo "Fetching langfuse config from adapter"
+                http_request GET "{{ include "baseUrl" $ }}/api/adapter/v1/langfuse/config" \
+                  -H "Authorization: Bearer $JWT"
+                if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+                  echo "WARNING: failed to fetch langfuse config ($HTTP_STATUS): $HTTP_BODY"
+                else
+                  LF_ENDPOINT=$(echo "$HTTP_BODY" | jq -r '.endpoint // empty')
+                  LF_BASIC_AUTH=$(echo "$HTTP_BODY" | jq -r '.basicAuth // empty')
+                  LF_TLS_INSECURE=$(echo "$HTTP_BODY" | jq -r '.tlsInsecure // "false"')
+                  LF_TIMEOUT=$(echo "$HTTP_BODY" | jq -r '.timeout // "30s"')
+                  if [ -z "$LF_ENDPOINT" ] || [ -z "$LF_BASIC_AUTH" ]; then
+                    echo "WARNING: langfuse config incomplete (endpoint or basicAuth missing)"
+                  else
+                    kubectl -n "$NAMESPACE" create secret generic "$LANGFUSE_SECRET" \
+                      --from-literal=LANGFUSE_ENDPOINT="$LF_ENDPOINT" \
+                      --from-literal=LANGFUSE_BASIC_AUTH="$LF_BASIC_AUTH" \
+                      --from-literal=LANGFUSE_TLS_INSECURE="$LF_TLS_INSECURE" \
+                      --from-literal=LANGFUSE_TIMEOUT="$LF_TIMEOUT" \
+                      --dry-run=client -o yaml | kubectl apply -f -
+                    annotate_now "$LANGFUSE_SECRET"
+                  fi
+                fi
+              else
+                echo "Langfuse config is fresh; skipping"
+              fi
+
               {{- if ((.Values.gitproxy).enabled) }}
-              echo "[5/5] GitProxy image updater"
+              echo "[6/$TOTAL_STEPS] GitProxy image updater"
               (
               NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
               DEPLOYMENT_NAME=gitproxy

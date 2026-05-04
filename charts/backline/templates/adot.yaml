@@ -72,6 +72,9 @@ true
         configMapKeyRef:
           name: adapter-config
           key: LOG_STREAM_NAME
+  envFrom:
+    - secretRef:
+        name: {{ include "secretname.langfuse" . }}
   securityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true

@@ -59,6 +59,16 @@ https://staging-app.backline.ai
 {{- end -}}
 {{- end -}}
 
+{{- define "secretname.langfuse" -}}
+{{ printf "langfuse-config" | quote }}
+{{- end -}}
+
+{{- define "janitor.totalSteps" -}}
+{{- $steps := 5 -}}
+{{- if ((.Values.gitproxy).enabled) }}{{- $steps = add $steps 1 -}}{{- end -}}
+{{- $steps -}}
+{{- end -}}
+
 {{- define "common.containerSecurityContext" -}}
 allowPrivilegeEscalation: false
 readOnlyRootFilesystem: {{ if hasKey . "readOnlyRootFilesystem" }}{{ .readOnlyRootFilesystem }}{{ else }}false{{ end }}
