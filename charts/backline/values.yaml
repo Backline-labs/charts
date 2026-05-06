@@ -66,7 +66,6 @@ janitor:
 worker:
   replicaCount: 1
   image:
-    name: prod-runner
     tag: "0000001-0000000001"
     pullPolicy: IfNotPresent
   service:
@@ -107,7 +106,6 @@ gitproxy:
   enabled: false
   replicaCount: 1
   image:
-    name: prod-gitproxy
     tag: "0000001-0000000001"
     pullPolicy: IfNotPresent
   service:

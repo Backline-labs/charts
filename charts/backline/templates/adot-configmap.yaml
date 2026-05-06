@@ -61,13 +61,20 @@ data:
         endpoint: "https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-e511ab36-d361-43fe-a8f0-450ca87e0655/api/v1/remote_write"
         auth:
           authenticator: sigv4auth
+      otlphttp/langfuse:
+        endpoint: ${env:LANGFUSE_ENDPOINT}
+        headers:
+          Authorization: "Basic ${env:LANGFUSE_BASIC_AUTH}"
+        tls:
+          insecure: ${env:LANGFUSE_TLS_INSECURE}
+        timeout: ${env:LANGFUSE_TIMEOUT}
     service:
       extensions: [sigv4auth]
       pipelines:
         traces:
           receivers: [otlp]
           processors: []
-          exporters: [awsxray]
+          exporters: [awsxray, otlphttp/langfuse]
         logs:
           receivers: [filelog]
           processors: [resource]

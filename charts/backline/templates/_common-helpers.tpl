@@ -43,6 +43,14 @@ arn:aws:iam::580550010989:role/OnPremOtelShipRole
 {{- end -}}
 {{- end -}}
 
+{{- define "image.namePrefix" -}}
+{{- if ne .Values.environment "staging" -}}prod-{{- end -}}
+{{- end -}}
+
+{{- define "worker.image.name" -}}{{ include "image.namePrefix" . }}runner{{- end -}}
+
+{{- define "gitproxy.image.name" -}}{{ include "image.namePrefix" . }}gitproxy{{- end -}}
+
 {{- define "region" -}}
 {{- if eq .Values.environment "staging" -}}
 us-west-1
@@ -57,6 +65,16 @@ https://app.backline.ai
 {{- else -}}
 https://staging-app.backline.ai
 {{- end -}}
+{{- end -}}
+
+{{- define "secretname.langfuse" -}}
+{{ printf "langfuse-config" | quote }}
+{{- end -}}
+
+{{- define "janitor.totalSteps" -}}
+{{- $steps := 5 -}}
+{{- if ((.Values.gitproxy).enabled) }}{{- $steps = add $steps 1 -}}{{- end -}}
+{{- $steps -}}
 {{- end -}}
 
 {{- define "common.containerSecurityContext" -}}
