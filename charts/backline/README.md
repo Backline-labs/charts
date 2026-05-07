@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.1.1
+**Chart Version:** 1.1.2
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -121,7 +121,7 @@ helm repo update backline-ai
 helm install backline \
   backline-ai/backline \
   --namespace backline \
-  --version 1.1.1 \
+  --version 1.1.2 \
   --create-namespace \
   --set accessKey='<YOUR ACCESS KEY>'
 ```
@@ -259,10 +259,10 @@ Resource profiles define CPU and memory allocations for ephemeral jobs (Coder an
 
 | Profile   | CPU Request | CPU Limit | Memory Request | Memory Limit |
 | --------- | ----------- | --------- | -------------- | ------------ |
-| `small`   | 500m        | 1000m     | 1Gi            | 2Gi          |
-| `medium`  | 2000m       | 2000m     | 8Gi            | 8Gi          |
-| `large`   | 4000m       | 4000m     | 16Gi           | 16Gi         |
-| `xlarge`  | 8000m       | 8000m     | 32Gi           | 32Gi         |
+| `small`   | 250m        | 1000m     | 1Gi            | 2Gi          |
+| `medium`  | 500m        | 2000m     | 4Gi            | 8Gi          |
+| `large`   | 1000m       | 4000m     | 8Gi            | 16Gi         |
+| `xlarge`  | 2000m       | 8000m     | 16Gi           | 32Gi         |
 
 You can customize these profiles in your values file:
 
@@ -270,7 +270,7 @@ You can customize these profiles in your values file:
 resourceProfiles:
   small:
     requests:
-      cpu: "500m"
+      cpu: "250m"
       memory: "1Gi"
     limits:
       cpu: "1000m"
