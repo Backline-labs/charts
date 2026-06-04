@@ -55,13 +55,27 @@ spec:
                 secretKeyRef:
                   name: accesskey
                   key: ACCESS_KEY
+            {{- if .Values.gitproxy.caCert }}
+            - name: SSL_CERT_DIR
+              value: "/etc/ssl/certs:/etc/backline/ca"
+            {{- end }}
           volumeMounts:
             {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 12 }}
+            {{- if .Values.gitproxy.caCert }}
+            - name: custom-ca
+              mountPath: /etc/backline/ca
+              readOnly: true
+            {{- end }}
         {{- if not (include "adot.isK8sVersionGte129" .) }}
         {{- include "adot.sidecar" (merge (dict "otelImage" .Values.gitproxy.otel.collector.image) .) | nindent 8 }}
         {{- end }}
       volumes:
       {{- include "adot.volumes" . | nindent 8 }}
+      {{- if .Values.gitproxy.caCert }}
+        - name: custom-ca
+          secret:
+            secretName: gitproxy-ca
+      {{- end }}
       {{- with .Values.gitproxy.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

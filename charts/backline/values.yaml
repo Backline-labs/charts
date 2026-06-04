@@ -114,6 +114,11 @@ gitproxy:
     skipCertVerification: false
     maxRetries: 3
     retryDelay: "1s"
+  # CA certificate(s) in PEM format for a self-hosted git server that uses an
+  # internal/corporate CA. When set, the chart creates a Secret from it and mounts it
+  # so the agent trusts the git server's TLS certificate. Public CAs remain trusted,
+  # so the connection to Backline cloud is unaffected. Leave empty to use public CAs only.
+  caCert: ""
   temporal:
     maxConcurrentActivities: 20
   resources:
