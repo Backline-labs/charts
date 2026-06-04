@@ -114,6 +114,12 @@ gitproxy:
     skipCertVerification: false
     maxRetries: 3
     retryDelay: "1s"
+  # Base64-encoded PEM CA certificate(s) for a self-hosted git server that uses an
+  # internal/corporate CA. Generate with:  base64 -w0 ca.pem   (or:  base64 < ca.pem | tr -d '\n')
+  # When set, the chart creates a Secret from it and mounts it so the agent trusts the
+  # git server's TLS certificate. Public CAs remain trusted (the Backline-cloud connection
+  # is unaffected). Leave empty to use public CAs only.
+  caCert: ""
   temporal:
     maxConcurrentActivities: 20
   resources:
