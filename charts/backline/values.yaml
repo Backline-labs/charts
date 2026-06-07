@@ -25,48 +25,55 @@ proxy:
 customCaCert: ""
 
 # ============================================================================
-# MINIO OBJECT STORAGE (Subchart)
+# SEAWEEDFS OBJECT STORAGE (S3-compatible, replaces MinIO)
 # ============================================================================
-minio:
+# ── Object-storage credentials (worker ⇄ S3) ───────────────────────────────
+# Written to the chart-managed `seaweedfs-s3-secret` Secret, shared by the
+# worker and the SeaweedFS S3 gateway (single source of truth). To swap the
+# backing store later (e.g. RustFS), repoint the `seaweedfs` dependency in
+# Chart.yaml + the worker endpoint, and keep these credentials.
+objectStorage:
+  accessKey: "backline"
+  secretKey: "backline-seaweedfs-password"
+
+# ── SeaweedFS object storage (subchart) ─────────────────────────────────────
+# S3-compatible store, wired as a Helm dependency (replaces the MinIO subchart).
+# Runs as a single-node "all-in-one" pod (master+volume+filer+s3), mirroring the
+# previous standalone MinIO. Set seaweedfs.enabled=false to use an external S3.
+seaweedfs:
   enabled: true
-  fullnameOverride: minio
-  # Standalone mode (single node)
-  mode: standalone
-  # Root credentials
-  rootUser: "backline"
-  rootPassword: "backline-minio-password"
-  # Persistence configuration
-  persistence:
+  fullnameOverride: seaweedfs
+  # all-in-one runs all roles in one pod, so disable the separate workloads.
+  master:
+    enabled: false
+  volume:
+    enabled: false
+  filer:
+    enabled: false
+  s3:
+    enabled: false        # the S3 gateway is served by the all-in-one pod
+    port: 8333
+  allInOne:
     enabled: true
-    size: 10Gi
-    storageClass: ""
-  # Resource configuration
-  resources:
-    requests:
-      cpu: "100m"
-      memory: "256Mi"
-    limits:
-      cpu: "500m"
-      memory: "512Mi"
-  # Service configuration
-  service:
-    type: ClusterIP
-    port: 9000
-  # Disable web console
-  consoleEnabled: false
-  # Default buckets to create
-  buckets:
-    - name: static-assets
-      policy: none
-      purge: false
-      objectlocking: false
-    - name: operational
-      policy: none
-      purge: false
-      objectlocking: false
-  # Post-install job for bucket creation
-  postJob:
-    enabled: true
+    data:
+      type: persistentVolumeClaim
+      size: 10Gi
+      storageClass: ""
+    s3:
+      enabled: true
+      enableAuth: true
+      # Identities/credentials come from the chart-managed Secret above.
+      existingConfigSecret: seaweedfs-s3-secret
+      createBuckets:
+        - name: operational
+        - name: static-assets
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
 
 # Janitor component
 janitor:

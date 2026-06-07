@@ -70,17 +70,17 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            {{- if .Values.minio.enabled }}
+            {{- if .Values.seaweedfs.enabled }}
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: minio
-                  key: rootUser
+                  name: seaweedfs-s3-secret
+                  key: accessKey
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: minio
-                  key: rootPassword
+                  name: seaweedfs-s3-secret
+                  key: secretKey
             {{- end }}
           {{- with include "backline.proxyEnv" $ | trim }}
             {{- . | nindent 12 }}

@@ -9,8 +9,8 @@ data:
   WITH_TELEMETRY: {{ .Values.worker.otel.enabled | quote }}
   LOG_FILE_PATH: {{ printf "%s/worker.log" (include "logging.dir" .) | quote }}
   LITELLM_SERVICE_URL: {{ printf "%s/api/litellm/v1/proxy" (include "baseUrl" .) | quote }}
-  {{- if .Values.minio.enabled }}
-  AWS_DEV_ENDPOINT: {{ printf "http://%s.%s.svc.cluster.local:%d" (default (printf "%s-minio" .Release.Name) .Values.minio.fullnameOverride) (default .Release.Namespace .Values.namespaceOverride) (int .Values.minio.service.port) | quote }}
+  {{- if .Values.seaweedfs.enabled }}
+  AWS_DEV_ENDPOINT: {{ printf "http://%s-all-in-one.%s.svc.cluster.local:%d" .Values.seaweedfs.fullnameOverride (default .Release.Namespace .Values.namespaceOverride) (int .Values.seaweedfs.s3.port) | quote }}
   AWS_REGION: "us-east-1"
   AWS_STATIC_ASSETS_BUCKET: "static-assets"
   AWS_OPERATIONAL_BUCKET: "operational"
