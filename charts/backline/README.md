@@ -247,7 +247,7 @@ helm upgrade backline backline-ai/backline \
 
 **Trusting a self-hosted git server's internal CA:**
 
-If your git server's TLS certificate is signed by an internal/corporate CA, supply that CA so Backline trusts it (otherwise connections fail with `x509: certificate signed by unknown authority`). The top-level `customCaCert` expects the **base64-encoded PEM** of the CA certificate (or chain) as a single line, and applies to both gitproxy and the runner's clone jobs — generate it from your CA file:
+If your git server's TLS certificate is signed by an internal/corporate CA, supply that CA so Backline trusts it (otherwise connections fail with `x509: certificate signed by unknown authority`). `customCaCert` takes the **base64-encoded PEM** of the CA certificate (or chain) as a single line — generate it from your CA file:
 
 ```bash
 base64 -w0 ca.pem            # Linux (GNU base64)
@@ -255,11 +255,9 @@ base64 -w0 ca.pem            # Linux (GNU base64)
 base64 < ca.pem | tr -d '\n'
 ```
 
-Then set the value — the chart creates a Secret from it and mounts it into gitproxy and the runner's clone jobs. Public CAs stay trusted, so the connection to Backline cloud is unaffected:
+Then set the value:
 
 ```yaml
-gitproxy:
-  enabled: true
 customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PEM (or chain)
 ```
 
