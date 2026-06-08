@@ -3,6 +3,21 @@ entries:
   backline:
   - apiVersion: v2
     appVersion: 1.1.0
+    created: "2026-06-08T15:56:02.376213127Z"
+    dependencies:
+    - condition: minio.enabled
+      name: minio
+      repository: https://charts.min.io/
+      version: 5.4.0
+    description: Backline on-prem stack
+    digest: fbf2bf09422cd9542e2c99a6d4740d69c0f97418c78aaa16e6ba26e35a7df384
+    name: backline
+    type: application
+    urls:
+    - https://github.com/Backline-labs/charts/releases/download/backline-1.1.4/backline-1.1.4.tgz
+    version: 1.1.4
+  - apiVersion: v2
+    appVersion: 1.1.0
     created: "2026-06-04T16:04:13.768084094Z"
     dependencies:
     - condition: minio.enabled
@@ -196,4 +211,4 @@ entries:
     urls:
     - https://github.com/Backline-labs/charts/releases/download/backline-0.1.0/backline-0.1.0.tgz
     version: 0.1.0
-generated: "2026-06-04T16:04:13.768203821Z"
+generated: "2026-06-08T15:56:02.376331754Z"
