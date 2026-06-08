@@ -152,7 +152,7 @@ helm install backline backline-ai/backline \
 | `accessKey`         | Authentication key for API access                                 | Yes      | `""`       |
 | `namespaceOverride` | Override the default namespace                                    | No       | `backline` |
 | `environment`       | Backline AI SaaS endpoint environment (`staging` or `production`) | Yes      | `staging`  |
-| `customCaCert`      | Base64-encoded PEM CA bundle to trust a self-hosted git server's internal/corporate CA — applies to gitproxy and the runner's clone jobs (see "Trusting a self-hosted git server's internal CA") | No | `""` |
+| `customCaCert`      | Base64-encoded PEM CA certificate(s) used for trusted communication with a self-hosted git host (internal/corporate CA). See "Trusting a self-hosted git server's internal CA". | No | `""` |
 
 ### Proxy Configuration
 

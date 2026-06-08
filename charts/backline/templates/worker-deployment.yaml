@@ -87,7 +87,7 @@ spec:
           {{- end }}
           {{- if .Values.customCaCert }}
             - name: CUSTOM_CA_SECRET_NAME
-              value: "backline-ca"
+              value: "custom-ca"
           {{- end }}
           volumeMounts:
             {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 12 }}

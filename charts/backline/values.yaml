@@ -19,9 +19,8 @@ proxy:
 # ============================================================================
 # CUSTOM CA (optional)
 # ============================================================================
-# Base64-encoded PEM CA bundle (or chain) for a self-hosted git server that uses an
-# internal/corporate CA. When set, the chart creates a Secret and makes it available
-# to gitproxy and the runner's clone jobs so they trust the server's certificate.
+# Base64-encoded PEM CA certificate(s) used for trusted communication with a
+# self-hosted git host signed by an internal/corporate CA.
 # Generate with:  base64 -w0 ca.pem   (or:  base64 < ca.pem | tr -d '\n')
 customCaCert: ""
 

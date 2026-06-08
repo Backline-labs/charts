@@ -77,7 +77,7 @@ spec:
       {{- if .Values.customCaCert }}
         - name: custom-ca
           secret:
-            secretName: backline-ca
+            secretName: custom-ca
       {{- end }}
       {{- with .Values.gitproxy.nodeSelector }}
       nodeSelector:
