@@ -72,6 +72,9 @@ true
         configMapKeyRef:
           name: adapter-config
           key: LOG_STREAM_NAME
+  {{- with include "backline.proxyEnv" . | trim }}
+  {{- . | nindent 4 }}
+  {{- end }}
   envFrom:
     - secretRef:
         name: {{ include "secretname.langfuse" . }}

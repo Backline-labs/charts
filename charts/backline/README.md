@@ -152,6 +152,17 @@ helm install backline backline-ai/backline \
 | `accessKey`         | Authentication key for API access                                 | Yes      | `""`       |
 | `namespaceOverride` | Override the default namespace                                    | No       | `backline` |
 | `environment`       | Backline AI SaaS endpoint environment (`staging` or `production`) | Yes      | `staging`  |
+| `caCert`            | Base64-encoded PEM CA bundle to trust a self-hosted git server's internal/corporate CA — applies to gitproxy and the runner's clone jobs (see "Trusting a self-hosted git server's internal CA") | No | `""` |
+
+### Proxy Configuration
+
+For clusters that route outbound traffic through a corporate proxy. When set, these are injected (both upper- and lower-case) into the worker, gitproxy and janitor containers. Leave empty to connect directly.
+
+| Parameter          | Description                                                                                                | Default |
+| ------------------ | ---------------------------------------------------------------------------------------------------------- | ------- |
+| `proxy.httpProxy`  | Outbound HTTP proxy URL                                                                                    | `""`    |
+| `proxy.httpsProxy` | Outbound HTTPS proxy URL                                                                                   | `""`    |
+| `proxy.noProxy`    | Comma-separated hosts/CIDRs to reach directly — include your internal git server and in-cluster addresses | `""`    |
 
 ### Janitor Configuration
 
@@ -181,6 +192,7 @@ The Worker is the main application component.
 | `worker.service.httpPort`          | HTTP service port                                  | `8080`                                                 |
 | `worker.modelName`                 | AI model for code generation tasks                 | `bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0` |
 | `worker.structuredOutputModelName` | AI model for structured output parsing             | `claude-haiku-4-5-20251001`                            |
+| `worker.awsRegion`                 | AWS region for the worker's AWS SDK calls (Bedrock, S3/MinIO signing) | `us-east-1`                         |
 | `worker.resources.requests.cpu`    | CPU request                                        | `500m`                                                 |
 | `worker.resources.requests.memory` | Memory request                                     | `1Gi`                                                  |
 | `worker.resources.limits.cpu`      | CPU limit                                          | `2000m`                                                |
@@ -214,7 +226,7 @@ GitProxy enables Backline to interact with on-prem git servers that are not acce
 | `gitproxy.adapter.skipCertVerification` | Skip TLS verification for adapter connection | `false` |
 | `gitproxy.adapter.maxRetries` | Max retries for adapter HTTP calls | `3` |
 | `gitproxy.adapter.retryDelay` | Delay between retries | `1s` |
-| `gitproxy.caCert` | Base64-encoded PEM CA bundle to trust a self-hosted git server's internal/corporate CA (see "Trusting a self-hosted git server's internal CA" below). When set, the chart creates a Secret and mounts it so the agent trusts the server's certificate | `""` |
+| `gitproxy.caCert` | Deprecated alias for the top-level `caCert`, still honored for backward compatibility. Prefer the top-level `caCert`. | `""` |
 | `gitproxy.temporal.maxConcurrentActivities` | Max concurrent git operations | `20` |
 | `gitproxy.resources.requests.cpu` | CPU request | `250m` |
 | `gitproxy.resources.requests.memory` | Memory request | `256Mi` |
@@ -237,7 +249,7 @@ helm upgrade backline backline-ai/backline \
 
 **Trusting a self-hosted git server's internal CA:**
 
-If your git server's TLS certificate is signed by an internal/corporate CA, supply that CA so the agent trusts it (otherwise connections fail with `x509: certificate signed by unknown authority`). `gitproxy.caCert` expects the **base64-encoded PEM** of the CA certificate as a single line — generate it from your CA file:
+If your git server's TLS certificate is signed by an internal/corporate CA, supply that CA so Backline trusts it (otherwise connections fail with `x509: certificate signed by unknown authority`). The top-level `caCert` expects the **base64-encoded PEM** of the CA certificate (or chain) as a single line, and applies to both gitproxy and the runner's clone jobs — generate it from your CA file:
 
 ```bash
 base64 -w0 ca.pem            # Linux (GNU base64)
@@ -245,12 +257,12 @@ base64 -w0 ca.pem            # Linux (GNU base64)
 base64 < ca.pem | tr -d '\n'
 ```
 
-Then set the value — the chart creates a Secret from it and mounts it into the agent. Public CAs stay trusted, so the connection to Backline cloud is unaffected:
+Then set the value — the chart creates a Secret from it and mounts it into gitproxy and the runner's clone jobs. Public CAs stay trusted, so the connection to Backline cloud is unaffected:
 
 ```yaml
 gitproxy:
   enabled: true
-  caCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PEM
+caCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PEM (or chain)
 ```
 
 ### MinIO Configuration

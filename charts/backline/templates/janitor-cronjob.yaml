@@ -30,6 +30,9 @@ spec:
                   key: ACCESS_KEY
             - name: CURL_CA_BUNDLE
               value: /etc/ssl/certs/ca-certificates.crt
+            {{- with include "backline.proxyEnv" $ | trim }}
+            {{- . | nindent 12 }}
+            {{- end }}
             command:
             - /bin/sh
             - -c

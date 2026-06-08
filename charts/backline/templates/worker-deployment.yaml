@@ -82,6 +82,13 @@ spec:
                   name: minio
                   key: rootPassword
             {{- end }}
+          {{- with include "backline.proxyEnv" $ | trim }}
+            {{- . | nindent 12 }}
+          {{- end }}
+          {{- if (include "backline.caCert" .) }}
+            - name: CUSTOM_CA_SECRET_NAME
+              value: "backline-ca"
+          {{- end }}
           volumeMounts:
             {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 12 }}
         {{- if not (include "adot.isK8sVersionGte129" .) }}

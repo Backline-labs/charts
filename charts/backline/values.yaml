@@ -4,6 +4,29 @@ environment: "production"
 namespaceOverride: "backline"
 
 # ============================================================================
+# OUTBOUND PROXY (optional)
+# ============================================================================
+# For clusters that route egress through a corporate proxy. When set, these are
+# injected (both upper- and lower-case) into the worker, gitproxy and janitor
+# containers. Leave empty to connect directly.
+# Include your internal hosts (e.g. a self-hosted git server) and in-cluster
+# addresses in noProxy so they are reached directly, not through the proxy.
+proxy:
+  httpProxy: ""
+  httpsProxy: ""
+  noProxy: ""
+
+# ============================================================================
+# CUSTOM CA (optional)
+# ============================================================================
+# Base64-encoded PEM CA bundle for a self-hosted git server that uses an
+# internal/corporate CA. When set, the chart creates a Secret and makes it
+# available to gitproxy and the runner's clone jobs so they trust the server's
+# certificate. Generate with:  base64 -w0 ca.pem   (or:  base64 < ca.pem | tr -d '\n')
+# Supersedes gitproxy.caCert, which still works for backward compatibility.
+caCert: ""
+
+# ============================================================================
 # MINIO OBJECT STORAGE (Subchart)
 # ============================================================================
 minio:
@@ -72,6 +95,8 @@ worker:
     httpPort: 8080
   modelName: "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
   structuredOutputModelName: "claude-haiku-4-5-20251001"
+  # AWS region for the worker's AWS SDK calls (Bedrock, and S3/MinIO request signing).
+  awsRegion: "us-east-1"
   resources:
     requests:
       cpu: "500m"
