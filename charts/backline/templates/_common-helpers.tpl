@@ -85,3 +85,31 @@ capabilities:
     - ALL
 {{- end -}}
 
+{{/*
+Outbound proxy environment variables for components that egress through a
+corporate proxy. Emitted in both upper- and lower-case so Go- and shell-based
+components honour them, and only for the fields that are set.
+*/}}
+{{- define "backline.proxyEnv" -}}
+{{- with .Values.proxy }}
+{{- if .httpProxy }}
+- name: HTTP_PROXY
+  value: {{ .httpProxy | quote }}
+- name: http_proxy
+  value: {{ .httpProxy | quote }}
+{{- end }}
+{{- if .httpsProxy }}
+- name: HTTPS_PROXY
+  value: {{ .httpsProxy | quote }}
+- name: https_proxy
+  value: {{ .httpsProxy | quote }}
+{{- end }}
+{{- if .noProxy }}
+- name: NO_PROXY
+  value: {{ .noProxy | quote }}
+- name: no_proxy
+  value: {{ .noProxy | quote }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
