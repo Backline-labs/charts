@@ -113,12 +113,3 @@ components honour them, and only for the fields that are set.
 {{- end }}
 {{- end -}}
 
-{{/*
-Effective custom CA bundle (base64-encoded PEM). Prefers the top-level caCert and
-falls back to gitproxy.caCert for backward compatibility. Used by gitproxy and the
-runner's ephemeral jobs to trust a self-hosted git server's internal CA.
-*/}}
-{{- define "backline.caCert" -}}
-{{- coalesce (.Values.caCert) ((.Values.gitproxy).caCert) | default "" -}}
-{{- end -}}
-

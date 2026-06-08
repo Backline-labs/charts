@@ -85,7 +85,7 @@ spec:
           {{- with include "backline.proxyEnv" $ | trim }}
             {{- . | nindent 12 }}
           {{- end }}
-          {{- if (include "backline.caCert" .) }}
+          {{- if .Values.customCaCert }}
             - name: CUSTOM_CA_SECRET_NAME
               value: "backline-ca"
           {{- end }}

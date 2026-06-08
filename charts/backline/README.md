@@ -152,7 +152,7 @@ helm install backline backline-ai/backline \
 | `accessKey`         | Authentication key for API access                                 | Yes      | `""`       |
 | `namespaceOverride` | Override the default namespace                                    | No       | `backline` |
 | `environment`       | Backline AI SaaS endpoint environment (`staging` or `production`) | Yes      | `staging`  |
-| `caCert`            | Base64-encoded PEM CA bundle to trust a self-hosted git server's internal/corporate CA — applies to gitproxy and the runner's clone jobs (see "Trusting a self-hosted git server's internal CA") | No | `""` |
+| `customCaCert`      | Base64-encoded PEM CA bundle to trust a self-hosted git server's internal/corporate CA — applies to gitproxy and the runner's clone jobs (see "Trusting a self-hosted git server's internal CA") | No | `""` |
 
 ### Proxy Configuration
 
@@ -226,7 +226,6 @@ GitProxy enables Backline to interact with on-prem git servers that are not acce
 | `gitproxy.adapter.skipCertVerification` | Skip TLS verification for adapter connection | `false` |
 | `gitproxy.adapter.maxRetries` | Max retries for adapter HTTP calls | `3` |
 | `gitproxy.adapter.retryDelay` | Delay between retries | `1s` |
-| `gitproxy.caCert` | Deprecated alias for the top-level `caCert`, still honored for backward compatibility. Prefer the top-level `caCert`. | `""` |
 | `gitproxy.temporal.maxConcurrentActivities` | Max concurrent git operations | `20` |
 | `gitproxy.resources.requests.cpu` | CPU request | `250m` |
 | `gitproxy.resources.requests.memory` | Memory request | `256Mi` |
@@ -249,7 +248,7 @@ helm upgrade backline backline-ai/backline \
 
 **Trusting a self-hosted git server's internal CA:**
 
-If your git server's TLS certificate is signed by an internal/corporate CA, supply that CA so Backline trusts it (otherwise connections fail with `x509: certificate signed by unknown authority`). The top-level `caCert` expects the **base64-encoded PEM** of the CA certificate (or chain) as a single line, and applies to both gitproxy and the runner's clone jobs — generate it from your CA file:
+If your git server's TLS certificate is signed by an internal/corporate CA, supply that CA so Backline trusts it (otherwise connections fail with `x509: certificate signed by unknown authority`). The top-level `customCaCert` expects the **base64-encoded PEM** of the CA certificate (or chain) as a single line, and applies to both gitproxy and the runner's clone jobs — generate it from your CA file:
 
 ```bash
 base64 -w0 ca.pem            # Linux (GNU base64)
@@ -262,7 +261,7 @@ Then set the value — the chart creates a Secret from it and mounts it into git
 ```yaml
 gitproxy:
   enabled: true
-caCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PEM (or chain)
+customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PEM (or chain)
 ```
 
 ### MinIO Configuration
