@@ -94,8 +94,6 @@ worker:
     httpPort: 8080
   modelName: "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
   structuredOutputModelName: "claude-haiku-4-5-20251001"
-  # AWS region for the worker's AWS SDK calls (Bedrock, and S3/MinIO request signing).
-  awsRegion: "us-east-1"
   resources:
     requests:
       cpu: "500m"
