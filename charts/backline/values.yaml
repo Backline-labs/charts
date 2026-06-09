@@ -24,26 +24,14 @@ proxy:
 # Generate with:  base64 -w0 ca.pem   (or:  base64 < ca.pem | tr -d '\n')
 customCaCert: ""
 
-# ============================================================================
-# SEAWEEDFS OBJECT STORAGE (S3-compatible, replaces MinIO)
-# ============================================================================
-# ── Object-storage credentials (worker ⇄ S3) ───────────────────────────────
-# Written to the chart-managed `seaweedfs-s3-secret` Secret, shared by the
-# worker and the SeaweedFS S3 gateway (single source of truth). To swap the
-# backing store later (e.g. RustFS), repoint the `seaweedfs` dependency in
-# Chart.yaml + the worker endpoint, and keep these credentials.
+# OBJECT STORAGE (SeaweedFS, S3-compatible)
 objectStorage:
   accessKey: "backline"
   secretKey: "backline-seaweedfs-password"
 
-# ── SeaweedFS object storage (subchart) ─────────────────────────────────────
-# S3-compatible store, wired as a Helm dependency (replaces the MinIO subchart).
-# Runs as a single-node "all-in-one" pod (master+volume+filer+s3), mirroring the
-# previous standalone MinIO. Set seaweedfs.enabled=false to use an external S3.
 seaweedfs:
   enabled: true
   fullnameOverride: seaweedfs
-  # all-in-one runs all roles in one pod, so disable the separate workloads.
   master:
     enabled: false
   volume:
@@ -51,7 +39,7 @@ seaweedfs:
   filer:
     enabled: false
   s3:
-    enabled: false        # the S3 gateway is served by the all-in-one pod
+    enabled: false
     port: 8333
   allInOne:
     enabled: true
@@ -62,7 +50,6 @@ seaweedfs:
     s3:
       enabled: true
       enableAuth: true
-      # Identities/credentials come from the chart-managed Secret above.
       existingConfigSecret: seaweedfs-s3-secret
       createBuckets:
         - name: operational
