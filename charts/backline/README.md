@@ -103,7 +103,7 @@ The chart deploys the following components:
 - **GitProxy** *(optional)*: Enables Backline to work with on-prem git servers (e.g., Bitbucket Data Center) by proxying git API operations. Runs on the customer network and makes outbound-only connections to Backline cloud. Disabled by default
 - **Janitor**: CronJob that performs automated maintenance tasks including JWT token refresh, Docker registry authentication updates, and worker/gitproxy image updates
 - **ADOT Collector**: Sidecar container for exporting logs, traces, and metrics to Backline AI cloud infrastructure
-- **SeaweedFS**: S3-compatible object storage for static assets and operational data (single-node all-in-one pod, deployed via the upstream `seaweedfs` Helm dependency)
+- **SeaweedFS**: Object storage for static assets and operational data (deployed as a subchart)
 - **Coder Jobs**: Dynamically created Kubernetes Jobs for code execution (template embedded in worker ConfigMap)
 - **Dependabot Upgrader Jobs**: Dynamically created Kubernetes Jobs for dependency updates (template embedded in worker ConfigMap)
 
@@ -263,10 +263,6 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 
 ### SeaweedFS Configuration
 
-SeaweedFS provides S3-compatible object storage for static assets and operational data. It is wired as a **Helm dependency** (the upstream `seaweedfs` chart) and runs in single-node **all-in-one** mode (master + volume + filer + S3 gateway in one pod), replacing the previous MinIO subchart. Its built-in post-install/upgrade hook creates the buckets (the S3 gateway also auto-creates a bucket on first write). To swap the backing store later (e.g. RustFS), repoint the dependency in `Chart.yaml` and adjust the worker endpoint.
-
-Credentials are shared between the worker and the S3 gateway via the chart-managed `seaweedfs-s3-secret` Secret — set them once under `objectStorage`.
-
 | Parameter                                    | Description                                              | Default                         |
 | -------------------------------------------- | -------------------------------------------------------- | ------------------------------- |
 | `objectStorage.accessKey`                    | S3 access key (worker + SeaweedFS gateway)               | `backline`                      |
@@ -279,21 +275,6 @@ Credentials are shared between the worker and the S3 gateway via the chart-manag
 | `seaweedfs.allInOne.s3.createBuckets`        | Buckets created by the post-install hook                 | `operational`, `static-assets`  |
 | `seaweedfs.allInOne.resources`               | All-in-one pod resource requests/limits                  | `100m`/`256Mi` … `500m`/`512Mi` |
 | `seaweedfs.s3.port`                          | S3 API port (exposed on the `seaweedfs-all-in-one` svc)  | `8333`                          |
-
-#### Credentials (replacing MinIO's `rootUser` / `rootPassword`)
-
-SeaweedFS has no root account — S3 access is **identity-based** (a JSON list of identities, each with an access key, secret key, and allowed actions). The chart defines a single full-access identity (`Admin, Read, Write, List, Tagging`) from `objectStorage.accessKey` / `objectStorage.secretKey`; this is the root-equivalent. Those values are rendered into the `seaweedfs-s3-secret` Secret as both the plain keys (consumed by the worker) and the `seaweedfs_s3_config` identities file (consumed by the S3 gateway via `existingConfigSecret`).
-
-| MinIO (≤ 1.2.x)                            | SeaweedFS (1.3.0+)                                                      |
-| ------------------------------------------ | ---------------------------------------------------------------------- |
-| `minio.rootUser`                           | `objectStorage.accessKey`                                              |
-| `minio.rootPassword`                       | `objectStorage.secretKey`                                              |
-| `minio` Secret (`rootUser`/`rootPassword`) | `seaweedfs-s3-secret` (`accessKey`/`secretKey` + `seaweedfs_s3_config`) |
-
-Notes:
-- There is **no separate cluster/infra root password** — `global.seaweedfs.enableSecurity` (mTLS/JWT) is off by default, so the S3 identity is the only credential.
-- To **rotate** credentials: update `objectStorage.*`, run `helm upgrade`, then restart the worker so it re-reads the Secret.
-- For **least privilege**, add more identities (e.g. a read-only key) to the S3 config — SeaweedFS supports per-identity, per-bucket permissions, which MinIO's single root could not express.
 
 ### Resource Profiles
 
