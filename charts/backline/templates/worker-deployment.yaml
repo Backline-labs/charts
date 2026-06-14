@@ -88,14 +88,26 @@ spec:
           {{- if .Values.customCaCert }}
             - name: CUSTOM_CA_SECRET_NAME
               value: "custom-ca"
+            - name: SSL_CERT_DIR
+              value: "/etc/ssl/certs:/etc/backline/ca"
           {{- end }}
           volumeMounts:
             {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 12 }}
+            {{- if .Values.customCaCert }}
+            - name: custom-ca
+              mountPath: /etc/backline/ca
+              readOnly: true
+            {{- end }}
         {{- if not (include "adot.isK8sVersionGte129" .) }}
         {{- include "adot.sidecar" . | nindent 8 }}
         {{- end }}
       volumes:
       {{- include "adot.volumes" . | nindent 8 }}
+      {{- if .Values.customCaCert }}
+        - name: custom-ca
+          secret:
+            secretName: custom-ca
+      {{- end }}
       {{- with .Values.worker.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
