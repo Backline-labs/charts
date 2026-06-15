@@ -36,6 +36,14 @@ seaweedfs:
     enabled: false
   volume:
     enabled: false
+    # all-in-one derives -volume.max from the first dataDir; pin an explicit count.
+    # Auto (0) sizes the cap by disk (~9 for a 10Gi PVC), too few once each bucket
+    # gets its own collection. Volumes grow on demand; minFreeSpacePercent guards the disk.
+    dataDirs:
+      - name: data1
+        type: hostPath
+        hostPathPrefix: /ssd
+        maxVolumes: 100
   filer:
     enabled: false
   s3:
