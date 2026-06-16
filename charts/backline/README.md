@@ -14,9 +14,9 @@ graph TB
           BW["Backline Worker (Deployment)"]
           GP["GitProxy (Deployment)"]
           AJJR["AI Agents Job Runner"]
-          MINIO["MinIO (Object Storage)"]
+          SWFS["SeaweedFS (Object Storage)"]
           BW -->|Launch Jobs| AJJR
-          BW --> MINIO
+          BW --> SWFS
       end
       ONPREM_SCM["On-Prem Git Server<br/>(Bitbucket DC)"]
   end
@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.1.3
+**Chart Version:** 1.2.0
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -50,7 +50,7 @@ graph TB
     - [Worker Configuration](#worker-configuration)
       - [Worker OpenTelemetry Configuration](#worker-opentelemetry-configuration)
     - [GitProxy Configuration](#gitproxy-configuration)
-    - [MinIO Configuration](#minio-configuration)
+    - [SeaweedFS Configuration](#seaweedfs-configuration)
     - [Resource Profiles](#resource-profiles)
   - [Network Policy Recommendations (Egress Whitelist)](#network-policy-recommendations-egress-whitelist)
     - [DNS Resolution](#dns-resolution)
@@ -103,7 +103,7 @@ The chart deploys the following components:
 - **GitProxy** *(optional)*: Enables Backline to work with on-prem git servers (e.g., Bitbucket Data Center) by proxying git API operations. Runs on the customer network and makes outbound-only connections to Backline cloud. Disabled by default
 - **Janitor**: CronJob that performs automated maintenance tasks including JWT token refresh, Docker registry authentication updates, and worker/gitproxy image updates
 - **ADOT Collector**: Sidecar container for exporting logs, traces, and metrics to Backline AI cloud infrastructure
-- **MinIO**: Object storage for static assets and operational data (deployed as a subchart)
+- **SeaweedFS**: Object storage for static assets and operational data (deployed as a subchart)
 - **Coder Jobs**: Dynamically created Kubernetes Jobs for code execution (template embedded in worker ConfigMap)
 - **Dependabot Upgrader Jobs**: Dynamically created Kubernetes Jobs for dependency updates (template embedded in worker ConfigMap)
 
@@ -261,24 +261,20 @@ Then set the value:
 customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PEM (or chain)
 ```
 
-### MinIO Configuration
+### SeaweedFS Configuration
 
-MinIO provides object storage for static assets and operational data.
-
-| Parameter                    | Description                            | Default                    |
-| ---------------------------- | -------------------------------------- | -------------------------- |
-| `minio.enabled`              | Enable MinIO subchart                  | `true`                     |
-| `minio.mode`                 | MinIO deployment mode                  | `standalone`               |
-| `minio.rootUser`             | MinIO root username                    | `backline`                 |
-| `minio.rootPassword`         | MinIO root password                    | `backline-minio-password`  |
-| `minio.persistence.enabled`  | Enable persistent storage for MinIO   | `true`                     |
-| `minio.persistence.size`     | MinIO storage size                     | `10Gi`                     |
-| `minio.persistence.storageClass` | Storage class for MinIO PVC       | `""`                       |
-| `minio.resources.requests.cpu` | CPU request                          | `100m`                     |
-| `minio.resources.requests.memory` | Memory request                    | `256Mi`                    |
-| `minio.resources.limits.cpu` | CPU limit                              | `500m`                     |
-| `minio.resources.limits.memory` | Memory limit                        | `512Mi`                    |
-| `minio.buckets`              | List of buckets to create              | `static-assets`, `operational` |
+| Parameter                                    | Description                                              | Default                         |
+| -------------------------------------------- | -------------------------------------------------------- | ------------------------------- |
+| `objectStorage.accessKey`                    | S3 access key (worker + SeaweedFS gateway)               | `backline`                      |
+| `objectStorage.secretKey`                    | S3 secret key (worker + SeaweedFS gateway)               | `backline-seaweedfs-password`   |
+| `seaweedfs.enabled`                          | Enable the bundled store (`false` → use external S3)     | `true`                          |
+| `seaweedfs.allInOne.enabled`                 | Run the single-node all-in-one pod                       | `true`                          |
+| `seaweedfs.allInOne.data.size`               | Persistent volume size                                   | `10Gi`                          |
+| `seaweedfs.allInOne.data.storageClass`       | Storage class for the PVC (`""` = cluster default)       | `""`                            |
+| `seaweedfs.allInOne.s3.existingConfigSecret` | Secret holding the S3 identities (`seaweedfs_s3_config`) | `seaweedfs-s3-secret`           |
+| `seaweedfs.allInOne.s3.createBuckets`        | Buckets created by the post-install hook                 | `operational`, `static-assets`  |
+| `seaweedfs.allInOne.resources`               | All-in-one pod resource requests/limits                  | `100m`/`256Mi` … `500m`/`512Mi` |
+| `seaweedfs.s3.port`                          | S3 API port (exposed on the `seaweedfs-all-in-one` svc)  | `8333`                          |
 
 ### Resource Profiles
 
@@ -579,9 +575,10 @@ worker:
     - name: MODEL_NAME
       value: "anthropic/claude-sonnet-4-20250514"
 
-minio:
-  persistence:
-    size: "50Gi"
+seaweedfs:
+  allInOne:
+    data:
+      size: "50Gi"
 
 resourceProfiles:
   medium:
@@ -619,6 +616,28 @@ helm upgrade backline \
   --namespace backline \
   --values updated-values.yaml
 ```
+
+### Migrating from MinIO to SeaweedFS
+
+Releases before `1.3.0` bundled **MinIO** as the object store; `1.3.0+` replaces it with **SeaweedFS** (see [SeaweedFS Configuration](#seaweedfs-configuration)). Object data is **not** migrated — the `operational` / `static-assets` buckets hold regenerable cache, so the new store starts cold and repopulates. (To preserve objects, `mc mirror` / `rclone` from the old MinIO endpoint to the new SeaweedFS endpoint while both are reachable.)
+
+For an orderly migration, retire MinIO **before** switching to the SeaweedFS chart so its volume is reclaimed cleanly:
+
+```bash
+# 1. On the MinIO-based release: disable MinIO, then remove its PVC
+helm upgrade backline backline-ai/backline -n backline --reuse-values --set minio.enabled=false
+kubectl -n backline delete pvc minio --ignore-not-found
+# 2. Upgrade to the SeaweedFS-based chart (1.3.0+)
+helm upgrade backline backline-ai/backline -n backline --reuse-values
+```
+
+If you upgrade in place instead, remove the leftover MinIO PVC afterward:
+
+```bash
+kubectl -n backline delete pvc minio --ignore-not-found
+```
+
+> **Stuck `Terminating` PV?** If the MinIO PV won't delete, the CSI provisioner that created it is likely no longer installed (e.g. the cluster switched its default StorageClass / EBS CSI driver), so the backing disk isn't reclaimed automatically. Find the disk via the PV's `.spec.csi.volumeHandle`, delete it at the cloud provider (e.g. `aws ec2 delete-volume --volume-id <id>`), then clear the finalizers: `kubectl patch pv <pv> -p '{"metadata":{"finalizers":null}}' --type=merge`.
 
 ## Uninstall
 

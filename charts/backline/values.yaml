@@ -24,49 +24,51 @@ proxy:
 # Generate with:  base64 -w0 ca.pem   (or:  base64 < ca.pem | tr -d '\n')
 customCaCert: ""
 
-# ============================================================================
-# MINIO OBJECT STORAGE (Subchart)
-# ============================================================================
-minio:
+# OBJECT STORAGE (SeaweedFS, S3-compatible)
+objectStorage:
+  accessKey: "backline"
+  secretKey: "backline-seaweedfs-password"
+
+seaweedfs:
   enabled: true
-  fullnameOverride: minio
-  # Standalone mode (single node)
-  mode: standalone
-  # Root credentials
-  rootUser: "backline"
-  rootPassword: "backline-minio-password"
-  # Persistence configuration
-  persistence:
+  fullnameOverride: seaweedfs
+  master:
+    enabled: false
+  volume:
+    enabled: false
+    # all-in-one derives -volume.max from the first dataDir; pin an explicit count.
+    # Auto (0) sizes the cap by disk (~9 for a 10Gi PVC), too few once each bucket
+    # gets its own collection. Volumes grow on demand; minFreeSpacePercent guards the disk.
+    dataDirs:
+      - name: data1
+        type: hostPath
+        hostPathPrefix: /ssd
+        maxVolumes: 100
+  filer:
+    enabled: false
+  s3:
+    enabled: false
+    port: 8333
+  allInOne:
     enabled: true
-    size: 10Gi
-    storageClass: ""
-  # Resource configuration
-  resources:
-    requests:
-      cpu: "100m"
-      memory: "256Mi"
-    limits:
-      cpu: "500m"
-      memory: "512Mi"
-  # Service configuration
-  service:
-    type: ClusterIP
-    port: 9000
-  # Disable web console
-  consoleEnabled: false
-  # Default buckets to create
-  buckets:
-    - name: static-assets
-      policy: none
-      purge: false
-      objectlocking: false
-    - name: operational
-      policy: none
-      purge: false
-      objectlocking: false
-  # Post-install job for bucket creation
-  postJob:
-    enabled: true
+    data:
+      type: persistentVolumeClaim
+      size: 10Gi
+      storageClass: ""
+    s3:
+      enabled: true
+      enableAuth: true
+      existingConfigSecret: seaweedfs-s3-secret
+      createBuckets:
+        - name: operational
+        - name: static-assets
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
 
 # Janitor component
 janitor:

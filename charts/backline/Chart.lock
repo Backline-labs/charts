@@ -1,6 +1,6 @@
 dependencies:
-- name: minio
-  repository: https://charts.min.io/
-  version: 5.4.0
-digest: sha256:c51c40c38410fc75311e6455a76fd6961e8063e24ea574092e5fabe7f1064c49
-generated: "2026-01-20T21:00:23.74933+02:00"
+- name: seaweedfs
+  repository: https://seaweedfs.github.io/seaweedfs/helm
+  version: 4.31.0
+digest: sha256:54367650c4c562c9db653595eb0decc17aae9094d8c7c6665c5ecab20394e50c
+generated: "2026-06-07T16:50:37.979758+03:00"
