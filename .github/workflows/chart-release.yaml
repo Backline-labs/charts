@@ -29,7 +29,7 @@ jobs:
 
       - name: Add Helm dependency repositories
         run: |
-          helm repo add minio https://charts.min.io/
+          helm repo add seaweedfs https://seaweedfs.github.io/seaweedfs/helm
           helm repo update
 
       - name: Build chart dependencies
