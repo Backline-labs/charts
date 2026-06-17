@@ -24,8 +24,8 @@ graph TB
   SCM["Cloud SCM<br/>(GH, GitLab, Bitbucket Cloud)"]
   PM["Package Manager<br/>(npm, goproxy, maven,<br/>pip, etc.)"]
 
-  BW <-->|HTTPS| BP
-  GP <-->|HTTPS| BP
+  BW -->|HTTPS| BP
+  GP -->|HTTPS| BP
   GP <-->|REST API| ONPREM_SCM
   AJJR --> SCM
   AJJR --> PM
