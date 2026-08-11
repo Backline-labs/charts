@@ -52,6 +52,14 @@ graph TB
     - [GitProxy Configuration](#gitproxy-configuration)
     - [SeaweedFS Configuration](#seaweedfs-configuration)
     - [Resource Profiles](#resource-profiles)
+  - [High Availability Recommendations](#high-availability-recommendations)
+    - [Component Availability Model](#component-availability-model)
+    - [Cluster Prerequisites](#cluster-prerequisites)
+    - [Worker and GitProxy](#worker-and-gitproxy)
+    - [Pod Disruption Budgets](#pod-disruption-budgets)
+    - [Janitor](#janitor)
+    - [Object Storage (SeaweedFS Distributed Mode)](#object-storage-seaweedfs-distributed-mode)
+    - [Complete HA Values Example](#complete-ha-values-example)
   - [Network Policy Recommendations (Egress Whitelist)](#network-policy-recommendations-egress-whitelist)
     - [DNS Resolution](#dns-resolution)
     - [Package Registries](#package-registries)
@@ -299,6 +307,281 @@ resourceProfiles:
       cpu: "1000m"
       memory: "2Gi"
 ```
+
+## High Availability Recommendations
+
+The chart defaults are sized for a single-node evaluation install: one Worker replica, one GitProxy replica, and a single-pod SeaweedFS store. The settings below make the deployment survive a node failure, a node drain, and a rolling cluster upgrade.
+
+> **Note:** Backline does not enforce these settings. They are recommendations — apply the ones your cluster topology and availability targets call for.
+
+### Component Availability Model
+
+| Component | Workload | Scales out | Impact while unavailable |
+| --------- | -------- | ---------- | ------------------------ |
+| **Worker** | Deployment | Yes — `worker.replicaCount` | No new analysis or remediation work is picked up. Coder Jobs already running continue to completion |
+| **GitProxy** | Deployment | Yes — `gitproxy.replicaCount` | Git API operations against the on-prem git server stall |
+| **Janitor** | CronJob, `concurrencyPolicy: Forbid` | No — singleton by design | Secret rotation pauses: `session-jwt` (3 min) and `dockerconfig` (8 h) go stale, which eventually breaks telemetry export, ECR image pulls, and Coder Job authentication |
+| **SeaweedFS** | all-in-one pod + `ReadWriteOnce` PVC (default) | Only in distributed mode | Object storage reads/writes fail. The `operational` and `static-assets` buckets hold regenerable cache, so this is a performance loss, not data loss |
+| **Coder / Upgrader Jobs** | one Job per task | N/A | Individual task fails; Kubernetes does not retry it (`backoffLimit: 0`, `restartPolicy: Never`) |
+
+### Cluster Prerequisites
+
+- **At least 3 schedulable nodes.** The SeaweedFS subchart applies a *required* pod anti-affinity per component (`kubernetes.io/hostname`), so a component with 3 replicas needs 3 nodes or its pods stay `Pending`.
+- **A dynamic-provisioning StorageClass.** SeaweedFS master, volume, and filer run as StatefulSets with PVCs.
+- **Zone awareness (optional).** `ReadWriteOnce` volumes pin a pod to the zone that provisioned its disk. If you spread across zones, use per-component `topologySpreadConstraints` and expect a rescheduled SeaweedFS pod to stay in its original zone.
+
+### Worker and GitProxy
+
+Run at least two replicas of each. Neither component keeps state in the cluster — both make outbound connections to Backline cloud and pull their own work — so replicas need no coordination, leader election, or shared volume.
+
+```yaml
+worker:
+  replicaCount: 2
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app: worker
+          topologyKey: kubernetes.io/hostname
+
+gitproxy:
+  enabled: true
+  replicaCount: 2
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app: gitproxy
+          topologyKey: kubernetes.io/hostname
+```
+
+Use `requiredDuringSchedulingIgnoredDuringExecution` only when you have at least as many nodes as replicas; otherwise switch to `preferredDuringSchedulingIgnoredDuringExecution` so replicas still schedule on a smaller cluster. To spread across failure domains instead of nodes, set `topologyKey: topology.kubernetes.io/zone`.
+
+Notes on rollouts:
+
+- Both Deployments use the default `RollingUpdate` strategy, where `maxUnavailable` rounds down to 0 and `maxSurge` to 1 — the replacement pod becomes ready before the old one is retired. Janitor-driven image updates and `rollout restart` therefore do not create a gap on their own.
+- What a second replica buys you is coverage for the disruptions a rollout cannot schedule around: node failure, node drain, eviction under memory pressure, and liveness-probe restarts.
+
+### Pod Disruption Budgets
+
+The chart does not template PodDisruptionBudgets. Apply your own so a node drain cannot evict every replica at once — the chart labels Worker pods `app: worker` and GitProxy pods `app: gitproxy`:
+
+```yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: worker
+  namespace: backline
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: worker
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gitproxy
+  namespace: backline
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gitproxy
+```
+
+> **Warning:** Add a PDB only after raising `replicaCount` to 2 or more. `minAvailable: 1` against a single replica makes `kubectl drain` hang indefinitely.
+
+### Janitor
+
+The Janitor is deliberately a singleton — `concurrencyPolicy: Forbid` prevents two runs from writing the same secrets. It needs no HA configuration: the CronJob schedules a fresh Job every minute, and a lost node simply moves the next run elsewhere.
+
+What it does need is monitoring. A Janitor that fails repeatedly is silent until the secrets it maintains expire, and then image pulls and Coder Job authentication start failing. Alert on the last successful run, or on the freshness annotation the Janitor stamps on each secret:
+
+```bash
+kubectl get cronjob janitor -n backline -o jsonpath='{.status.lastSuccessfulTime}'
+kubectl get secret session-jwt -n backline -o jsonpath='{.metadata.annotations.backline\.ai/updatedAt}'
+```
+
+### Object Storage (SeaweedFS Distributed Mode)
+
+The default `seaweedfs.allInOne` pod is a single point of failure: one pod, one `ReadWriteOnce` PVC. For HA, disable it and enable the distributed components — master (Raft quorum), volume servers, filer, and a standalone S3 gateway:
+
+```yaml
+seaweedfs:
+  enabled: true
+  fullnameOverride: seaweedfs
+
+  allInOne:
+    enabled: false
+
+  master:
+    enabled: true
+    replicas: 3                 # Raft quorum — keep this an odd number
+    defaultReplication: "001"   # one extra copy on another volume server
+    data:
+      type: "persistentVolumeClaim"
+      size: 10Gi
+      storageClass: ""          # "" = cluster default
+
+  volume:
+    enabled: true
+    replicas: 3
+    dataDirs:
+      - name: data1
+        type: "persistentVolumeClaim"
+        size: 50Gi
+        storageClass: ""
+        maxVolumes: 100
+
+  filer:
+    enabled: true
+    replicas: 1
+    defaultReplicaPlacement: "001"
+    data:
+      type: "persistentVolumeClaim"
+      size: 10Gi
+      storageClass: ""
+
+  s3:
+    enabled: true
+    replicas: 2
+    port: 8333
+    enableAuth: true
+    existingConfigSecret: seaweedfs-s3-secret   # created by this chart
+    createBuckets:
+      - name: operational
+      - name: static-assets
+    affinity: |
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: seaweedfs
+                  app.kubernetes.io/component: s3
+              topologyKey: kubernetes.io/hostname
+
+# Required: the ConfigMap default points at the all-in-one service, which no longer exists
+worker:
+  env:
+    - name: AWS_DEV_ENDPOINT
+      value: "http://seaweedfs-s3.backline.svc.cluster.local:8333"
+```
+
+Points to get right:
+
+- **Override `AWS_DEV_ENDPOINT`.** The Worker ConfigMap derives the S3 endpoint from the all-in-one service name (`seaweedfs-all-in-one`). In distributed mode the gateway service is `seaweedfs-s3`, so the Worker cannot reach object storage until you override the endpoint through `worker.env` as shown above. Adjust the namespace in the URL if you set `namespaceOverride`.
+- **Keep `existingConfigSecret: seaweedfs-s3-secret`.** That Secret is rendered by this chart from `objectStorage.accessKey` / `objectStorage.secretKey`, so the gateway and the Worker keep using the same credentials. Change the defaults before going to production.
+- **Keep the filer at `replicas: 1`.** The filer stores its metadata in a pod-local `leveldb2` database on its own PVC, so a second replica would keep a second, divergent copy. Scaling the filer out requires pointing every replica at one shared external database, which this chart does not deploy — leave it at one replica and rely on the StatefulSet rescheduling it. A filer restart pauses object storage access for as long as its PVC takes to reattach; the masters, volume servers, and S3 gateway stay up.
+- **Avoid `hostPath` volumes.** The chart's `seaweedfs.volume.dataDirs` default uses `type: hostPath` with `hostPathPrefix: /ssd`, which ties data to one node and defeats rescheduling. Use `persistentVolumeClaim` as shown, and keep `maxVolumes` pinned — auto-sizing (`0`) derives too low a cap once each bucket takes its own collection.
+- **Replication is not backup.** `"001"` keeps one extra copy on another volume server in the same rack. To place the copy in another rack, assign racks with `seaweedfs.volume.rack` (or data centers with `seaweedfs.volume.dataCenter`) and use `"010"`.
+
+The distributed components ship no PodDisruptionBudgets either. Add them per component using the subchart's labels, for example `app.kubernetes.io/name: seaweedfs` plus `app.kubernetes.io/component: volume` and `app.kubernetes.io/instance: <release-name>`.
+
+If you would rather not operate object storage, set `seaweedfs.enabled: false` and point the Worker at an existing S3-compatible endpoint — note that the chart then renders no S3 configuration at all, so the endpoint, region, bucket names, and credentials must all be supplied through `worker.env` and `worker.envFromSecrets`.
+
+### Complete HA Values Example
+
+```yaml
+accessKey: "your-secret-access-key"
+environment: "production"
+
+objectStorage:
+  accessKey: "backline"
+  secretKey: "change-me"
+
+worker:
+  replicaCount: 2
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app: worker
+          topologyKey: kubernetes.io/hostname
+  env:
+    - name: AWS_DEV_ENDPOINT
+      value: "http://seaweedfs-s3.backline.svc.cluster.local:8333"
+
+gitproxy:
+  enabled: true
+  replicaCount: 2
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app: gitproxy
+          topologyKey: kubernetes.io/hostname
+
+seaweedfs:
+  enabled: true
+  fullnameOverride: seaweedfs
+  allInOne:
+    enabled: false
+  master:
+    enabled: true
+    replicas: 3
+    defaultReplication: "001"
+    data:
+      type: "persistentVolumeClaim"
+      size: 10Gi
+  volume:
+    enabled: true
+    replicas: 3
+    dataDirs:
+      - name: data1
+        type: "persistentVolumeClaim"
+        size: 50Gi
+        maxVolumes: 100
+  filer:
+    enabled: true
+    replicas: 1
+    defaultReplicaPlacement: "001"
+    data:
+      type: "persistentVolumeClaim"
+      size: 10Gi
+  s3:
+    enabled: true
+    replicas: 2
+    port: 8333
+    enableAuth: true
+    existingConfigSecret: seaweedfs-s3-secret
+    createBuckets:
+      - name: operational
+      - name: static-assets
+    affinity: |
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: seaweedfs
+                  app.kubernetes.io/component: s3
+              topologyKey: kubernetes.io/hostname
+```
+
+Apply it, then verify the spread and add the PodDisruptionBudgets from [Pod Disruption Budgets](#pod-disruption-budgets):
+
+```bash
+helm upgrade --install backline backline-ai/backline -n backline --values ha-values.yaml
+```
+```bash
+# no two replicas of a component on the same node
+kubectl get pods -n backline -o wide
+```
+```bash
+# the S3 gateway service has ready pods behind it — this is the address
+# the Worker's AWS_DEV_ENDPOINT points at
+kubectl get endpoints -n backline seaweedfs-s3
+```
+
+Bucket creation runs as a Helm `post-install,post-upgrade` hook, so an upgrade that completes successfully means `operational` and `static-assets` exist. The hook Job deletes itself on success and is only left behind when it fails.
 
 ## Network Policy Recommendations (Egress Whitelist)
 
