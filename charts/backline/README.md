@@ -52,6 +52,13 @@ graph TB
     - [GitProxy Configuration](#gitproxy-configuration)
     - [SeaweedFS Configuration](#seaweedfs-configuration)
     - [Resource Profiles](#resource-profiles)
+  - [High Availability Recommendations](#high-availability-recommendations)
+    - [Component Availability Model](#component-availability-model)
+    - [Cluster Prerequisites](#cluster-prerequisites)
+    - [Worker and GitProxy](#worker-and-gitproxy)
+    - [Pod Disruption Budgets](#pod-disruption-budgets)
+    - [Janitor](#janitor)
+    - [Complete HA Values Example](#complete-ha-values-example)
   - [Network Policy Recommendations (Egress Whitelist)](#network-policy-recommendations-egress-whitelist)
     - [DNS Resolution](#dns-resolution)
     - [Package Registries](#package-registries)
@@ -298,6 +305,142 @@ resourceProfiles:
     limits:
       cpu: "1000m"
       memory: "2Gi"
+```
+
+## High Availability Recommendations
+
+The chart defaults are sized for a single-node evaluation install: one Worker replica and one GitProxy replica. The settings below make the deployment survive a node failure, a node drain, and a rolling cluster upgrade.
+
+> **Note:** Backline does not enforce these settings. They are recommendations — apply the ones your cluster topology and availability targets call for.
+
+### Component Availability Model
+
+| Component | Workload | Scales out | Impact while unavailable |
+| --------- | -------- | ---------- | ------------------------ |
+| **Worker** | Deployment | Yes — `worker.replicaCount` | No new analysis or remediation work is picked up. Pods for already-dispatched Coder Jobs keep running |
+| **GitProxy** | Deployment | Yes — `gitproxy.replicaCount` | Git API operations against the on-prem git server stall |
+| **Janitor** | CronJob, `concurrencyPolicy: Forbid` | No — singleton by design | Secret rotation pauses: `session-jwt` (3 min) and `dockerconfig` (8 h) go stale, which eventually breaks telemetry export, ECR image pulls, and Coder Job authentication |
+| **SeaweedFS** | all-in-one pod | No | Object storage reads/writes fail. The `operational` and `static-assets` buckets hold regenerable cache, so this is a performance loss, not data loss |
+| **Coder / Upgrader Jobs** | one Job per task | N/A | Individual task fails; Kubernetes does not retry it (`backoffLimit: 0`, `restartPolicy: Never`) |
+
+### Cluster Prerequisites
+
+- **At least 2 schedulable nodes**, so Worker and GitProxy replicas can sit on different ones.
+- **Zone awareness (optional).** To spread replicas across failure domains rather than nodes, set `topologyKey: topology.kubernetes.io/zone` in the affinity rules below, or use `topologySpreadConstraints`.
+
+### Worker and GitProxy
+
+Run at least two replicas of each. Neither component keeps state in the cluster — both make outbound connections to Backline cloud and pull their own work — so replicas need no coordination, leader election, or shared volume.
+
+```yaml
+worker:
+  replicaCount: 2
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app: worker
+          topologyKey: kubernetes.io/hostname
+
+gitproxy:
+  enabled: true
+  replicaCount: 2
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app: gitproxy
+          topologyKey: kubernetes.io/hostname
+```
+
+Use `requiredDuringSchedulingIgnoredDuringExecution` only when you have at least as many nodes as replicas; otherwise switch to `preferredDuringSchedulingIgnoredDuringExecution` so replicas still schedule on a smaller cluster. To spread across failure domains instead of nodes, set `topologyKey: topology.kubernetes.io/zone`.
+
+Notes on rollouts:
+
+- Both Deployments use the default `RollingUpdate` strategy (25% each way), which at two replicas rounds `maxUnavailable` down to 0 and `maxSurge` up to 1 — the replacement pod becomes ready before the old one is retired. Janitor-driven image updates and `rollout restart` therefore do not create a gap on their own. From four replicas up, `maxUnavailable` becomes 1; pin it to 0 explicitly if you need the same guarantee at that size.
+- What a second replica buys you is coverage for the disruptions a rollout cannot schedule around: node failure, node drain, eviction under memory pressure, and liveness-probe restarts.
+
+### Pod Disruption Budgets
+
+The chart does not template PodDisruptionBudgets. Apply your own so a node drain cannot evict every replica at once — the chart labels Worker pods `app: worker` and GitProxy pods `app: gitproxy`:
+
+```yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: worker
+  namespace: backline
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: worker
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gitproxy
+  namespace: backline
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gitproxy
+```
+
+> **Warning:** Add a PDB only after raising `replicaCount` to 2 or more. `minAvailable: 1` against a single replica makes `kubectl drain` hang indefinitely.
+
+### Janitor
+
+The Janitor is deliberately a singleton — `concurrencyPolicy: Forbid` prevents two runs from writing the same secrets. It needs no HA configuration: the CronJob schedules a fresh Job every minute, and a lost node simply moves the next run elsewhere.
+
+What it does need is monitoring. A Janitor that fails repeatedly is silent until the secrets it maintains expire, and then image pulls and Coder Job authentication start failing. Alert on the last successful run, or on the freshness annotation the Janitor stamps on each secret:
+
+```bash
+kubectl get cronjob janitor -n backline -o jsonpath='{.status.lastSuccessfulTime}'
+kubectl get secret session-jwt -n backline -o jsonpath='{.metadata.annotations.backline\.ai/updatedAt}'
+```
+
+### Complete HA Values Example
+
+Two Workers and two GitProxies, each pair spread across nodes:
+
+```yaml
+accessKey: "your-secret-access-key"
+environment: "production"
+
+worker:
+  replicaCount: 2
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app: worker
+          topologyKey: kubernetes.io/hostname
+
+gitproxy:
+  enabled: true
+  replicaCount: 2
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app: gitproxy
+          topologyKey: kubernetes.io/hostname
+```
+
+Apply it, then verify the spread and add the PodDisruptionBudgets from [Pod Disruption Budgets](#pod-disruption-budgets):
+
+```bash
+helm upgrade --install backline backline-ai/backline -n backline --values ha-values.yaml
+```
+```bash
+# no two replicas of a component on the same node
+kubectl get pods -n backline -o wide
 ```
 
 ## Network Policy Recommendations (Egress Whitelist)
