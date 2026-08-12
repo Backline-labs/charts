@@ -197,8 +197,6 @@ The Worker is the main application component.
 | `worker.image.tag`                 | Image tag                                          | `0000001-0000000001`                                   |
 | `worker.image.pullPolicy`          | Image pull policy                                  | `IfNotPresent`                                         |
 | `worker.service.httpPort`          | HTTP service port                                  | `8080`                                                 |
-| `worker.modelName`                 | AI model for code generation tasks                 | `bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0` |
-| `worker.structuredOutputModelName` | AI model for structured output parsing             | `claude-haiku-4-5-20251001`                            |
 | `worker.resources.requests.cpu`    | CPU request                                        | `500m`                                                 |
 | `worker.resources.requests.memory` | Memory request                                     | `1Gi`                                                  |
 | `worker.resources.limits.cpu`      | CPU limit                                          | `2000m`                                                |
