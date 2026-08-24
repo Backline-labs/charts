@@ -45,6 +45,21 @@ spec:
         - |
           set -euo pipefail
 
+          wait_for_filer() {
+            local attempt=1
+            while [ $attempt -le 60 ]; do
+              if curl -sS -f -o /dev/null "$FILER/"; then
+                echo "Filer at $FILER is up"
+                return 0
+              fi
+              echo "Attempt $attempt: filer not ready yet, retrying in 5s..."
+              sleep 5
+              attempt=$((attempt + 1))
+            done
+            echo "ERROR: filer at $FILER not ready after 5 minutes" >&2
+            exit 1
+          }
+
           list() {
             curl -sS -f -H 'Accept: application/json' --get \
               --data-urlencode "limit=1000" --data-urlencode "lastFileName=$2" "$FILER$1"
@@ -95,6 +110,8 @@ spec:
 
             rm -f "$subdirs" "$victims"
           }
+
+          wait_for_filer
 
           {{- range $ttlBuckets }}
           echo "Sweeping /buckets/{{ .name }} (ttl {{ .ttl }})"
