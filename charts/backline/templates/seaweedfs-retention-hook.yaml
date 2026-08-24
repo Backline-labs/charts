@@ -1,0 +1,104 @@
+{{- $ttlBuckets := list }}
+{{- range (((.Values.seaweedfs).allInOne).s3).createBuckets }}
+{{- if .ttl }}
+{{- $ttlBuckets = append $ttlBuckets . }}
+{{- end }}
+{{- end }}
+{{- if and .Values.seaweedfs.enabled $ttlBuckets }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seaweedfs-retention-sweep
+  namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+  labels:
+    app: seaweedfs
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 1800
+  template:
+    metadata:
+      name: seaweedfs-retention-sweep
+      labels:
+        app: seaweedfs
+    spec:
+      restartPolicy: Never
+      securityContext:
+        {{- include "common.podSecurityContext" . | nindent 8 }}
+      containers:
+      - name: retention-sweep
+        image: {{ .Values.janitor.image.registry }}/{{ .Values.janitor.image.name }}:{{ .Values.janitor.image.tag }}
+        imagePullPolicy: {{ .Values.janitor.image.pullPolicy }}
+        securityContext:
+          {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 10 }}
+        resources:
+          {{- toYaml .Values.janitor.resources | nindent 10 }}
+        env:
+        - name: FILER
+          value: {{ printf "http://%s-all-in-one.%s.svc.cluster.local:%d" .Values.seaweedfs.fullnameOverride (default .Release.Namespace .Values.namespaceOverride) (int .Values.seaweedfs.filer.port) | quote }}
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -euo pipefail
+
+          list() {
+            curl -sS -f -H 'Accept: application/json' --get \
+              --data-urlencode "limit=1000" --data-urlencode "lastFileName=$2" "$FILER$1"
+          }
+
+          # Go os.FileMode marshals as a number; bit 1<<31 marks a directory
+          DIR_BIT=2147483648
+
+          sweep_dir() {
+            local dir="$1" last="" body subdirs victims count unknown
+            subdirs=$(mktemp)
+            victims=$(mktemp)
+
+            while : ; do
+              body=$(list "$dir" "$last")
+
+              printf '%s' "$body" | jq -r --argjson dirBit "$DIR_BIT" \
+                '.Entries // [] | .[] | select(.Mode >= $dirBit) | .FullPath' >> "$subdirs"
+
+              printf '%s' "$body" | jq -r --argjson dirBit "$DIR_BIT" \
+                '.Entries // [] | .[]
+                 | select(.Mode < $dirBit)
+                 | select((.TtlSec // 0) == 0)
+                 | .FullPath' > "$victims"
+
+              # a spike here means the listing stopped reporting expiries, not that objects lost them
+              unknown=$(printf '%s' "$body" | jq --argjson dirBit "$DIR_BIT" \
+                '[.Entries // [] | .[] | select(.Mode < $dirBit) | select(.TtlSec == null)] | length')
+              if [ "$unknown" -gt 0 ]; then
+                echo "WARNING: $unknown object(s) under $dir report no expiry field; treated as unexpiring" >&2
+              fi
+
+              count=$(wc -l < "$victims" | tr -d ' ')
+              if [ "$count" -gt 0 ]; then
+                echo "$dir: removing $count object(s) stored without an expiry"
+                sed "s|^|$FILER|" "$victims" | tr '\n' '\0' \
+                  | xargs -0 -n 50 curl -sS -f -X DELETE >/dev/null \
+                  || echo "WARNING: some objects under $dir could not be deleted" >&2
+              fi
+
+              [ "$(printf '%s' "$body" | jq -r '.ShouldDisplayLoadMore')" = "true" ] || break
+              last=$(printf '%s' "$body" | jq -r '.LastFileName')
+            done
+
+            while read -r subdir; do
+              sweep_dir "$subdir"
+            done < "$subdirs"
+
+            rm -f "$subdirs" "$victims"
+          }
+
+          {{- range $ttlBuckets }}
+          echo "Sweeping /buckets/{{ .name }} (ttl {{ .ttl }})"
+          sweep_dir "/buckets/{{ .name }}"
+          {{- end }}
+          echo "Retention sweep complete"
+{{- end }}
