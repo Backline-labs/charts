@@ -5,6 +5,11 @@
 {{- if not .Values.environment }}
   {{- fail "environment is required. Please set it in values.yaml or with --set environment=<value>" }}
 {{- end }}
+{{- range (((.Values.seaweedfs).allInOne).s3).createBuckets }}
+{{- if .ttl }}
+  {{- include "backline.validateTtl" .ttl }}
+{{- end }}
+{{- end }}
 {{- end -}}
 
 {{- define "secretname.dockerconfig" -}}
@@ -83,6 +88,17 @@ readOnlyRootFilesystem: {{ if hasKey . "readOnlyRootFilesystem" }}{{ .readOnlyRo
 capabilities:
   drop:
     - ALL
+{{- end -}}
+
+{{/*
+Reject a bucket ttl that weed's own fs.configure would refuse, which it reports without
+failing the hook that applies it.
+*/}}
+{{- define "backline.validateTtl" -}}
+{{- $ttl := toString . -}}
+{{- if not (regexMatch "^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]?)[mhdwMy]$" $ttl) -}}
+{{- fail (printf "invalid object storage ttl %q: expected a count of 1-255 followed by m, h, d, w, M or y; counts above 255 need a coarser unit (1y, not 365d)" $ttl) -}}
+{{- end -}}
 {{- end -}}
 
 {{/*

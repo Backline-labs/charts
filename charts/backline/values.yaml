@@ -46,6 +46,7 @@ seaweedfs:
         maxVolumes: 100
   filer:
     enabled: false
+    port: 8888
   s3:
     enabled: false
     port: 8333
@@ -60,7 +61,9 @@ seaweedfs:
       enableAuth: true
       existingConfigSecret: seaweedfs-s3-secret
       createBuckets:
+        # ttl binds at write; objects stored without one are removed on install/upgrade
         - name: operational
+          ttl: 7d
         - name: static-assets
     resources:
       requests:

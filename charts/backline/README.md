@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.2.0
+**Chart Version:** 1.4.0
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -51,6 +51,7 @@ graph TB
       - [Worker OpenTelemetry Configuration](#worker-opentelemetry-configuration)
     - [GitProxy Configuration](#gitproxy-configuration)
     - [SeaweedFS Configuration](#seaweedfs-configuration)
+      - [Object Retention](#object-retention)
     - [Resource Profiles](#resource-profiles)
   - [High Availability Recommendations](#high-availability-recommendations)
     - [Component Availability Model](#component-availability-model)
@@ -128,7 +129,6 @@ helm repo update backline-ai
 helm install backline \
   backline-ai/backline \
   --namespace backline \
-  --version 1.1.2 \
   --create-namespace \
   --set accessKey='<YOUR ACCESS KEY>'
 ```
@@ -154,12 +154,12 @@ helm install backline backline-ai/backline \
 
 ### Global Configuration
 
-| Parameter           | Description                                                       | Required | Default    |
-| ------------------- | ----------------------------------------------------------------- | -------- | ---------- |
-| `accessKey`         | Authentication key for API access                                 | Yes      | `""`       |
-| `namespaceOverride` | Override the default namespace                                    | No       | `backline` |
-| `environment`       | Backline AI SaaS endpoint environment (`staging` or `production`) | Yes      | `staging`  |
-| `customCaCert`      | Base64-encoded PEM CA certificate(s) used for trusted communication with a self-hosted git host (internal/corporate CA). See "Trusting a self-hosted git server's internal CA". | No | `""` |
+| Parameter           | Description                                                                                                                                                                     | Required | Default      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------ |
+| `accessKey`         | Authentication key for API access                                                                                                                                               | Yes      | `""`         |
+| `namespaceOverride` | Override the default namespace                                                                                                                                                  | No       | `backline`   |
+| `environment`       | Backline AI SaaS endpoint environment (`staging` or `production`)                                                                                                               | Yes      | `production` |
+| `customCaCert`      | Base64-encoded PEM CA certificate(s) used for trusted communication with a self-hosted git host (internal/corporate CA). See "Trusting a self-hosted git server's internal CA". | No       | `""`         |
 
 ### Proxy Configuration
 
@@ -268,18 +268,68 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 
 ### SeaweedFS Configuration
 
-| Parameter                                    | Description                                              | Default                         |
-| -------------------------------------------- | -------------------------------------------------------- | ------------------------------- |
-| `objectStorage.accessKey`                    | S3 access key (worker + SeaweedFS gateway)               | `backline`                      |
-| `objectStorage.secretKey`                    | S3 secret key (worker + SeaweedFS gateway)               | `backline-seaweedfs-password`   |
-| `seaweedfs.enabled`                          | Enable the bundled store (`false` → use external S3)     | `true`                          |
-| `seaweedfs.allInOne.enabled`                 | Run the single-node all-in-one pod                       | `true`                          |
-| `seaweedfs.allInOne.data.size`               | Persistent volume size                                   | `10Gi`                          |
-| `seaweedfs.allInOne.data.storageClass`       | Storage class for the PVC (`""` = cluster default)       | `""`                            |
-| `seaweedfs.allInOne.s3.existingConfigSecret` | Secret holding the S3 identities (`seaweedfs_s3_config`) | `seaweedfs-s3-secret`           |
-| `seaweedfs.allInOne.s3.createBuckets`        | Buckets created by the post-install hook                 | `operational`, `static-assets`  |
-| `seaweedfs.allInOne.resources`               | All-in-one pod resource requests/limits                  | `100m`/`256Mi` … `500m`/`512Mi` |
-| `seaweedfs.s3.port`                          | S3 API port (exposed on the `seaweedfs-all-in-one` svc)  | `8333`                          |
+| Parameter                                     | Description                                                                 | Default                         |
+| --------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------- |
+| `objectStorage.accessKey`                     | S3 access key (worker + SeaweedFS gateway)                                  | `backline`                      |
+| `objectStorage.secretKey`                     | S3 secret key (worker + SeaweedFS gateway)                                  | `backline-seaweedfs-password`   |
+| `seaweedfs.enabled`                           | Enable the bundled store (`false` → use external S3)                        | `true`                          |
+| `seaweedfs.fullnameOverride`                  | Name prefix for SeaweedFS resources (used to build its service DNS)         | `seaweedfs`                     |
+| `seaweedfs.master.enabled`                    | Run a standalone master (the all-in-one pod provides one)                   | `false`                         |
+| `seaweedfs.volume.enabled`                    | Run standalone volume servers (the all-in-one pod provides one)             | `false`                         |
+| `seaweedfs.volume.dataDirs[0].maxVolumes`     | Volume-count cap, passed to the pod as `-volume.max`                        | `100`                           |
+| `seaweedfs.volume.dataDirs[0].name`           | Unused in all-in-one mode (data comes from `allInOne.data`)                 | `data1`                         |
+| `seaweedfs.volume.dataDirs[0].type`           | Unused in all-in-one mode (data comes from `allInOne.data`)                 | `hostPath`                      |
+| `seaweedfs.volume.dataDirs[0].hostPathPrefix` | Unused in all-in-one mode (data comes from `allInOne.data`)                 | `/ssd`                          |
+| `seaweedfs.filer.enabled`                     | Run a standalone filer (the all-in-one pod provides one)                    | `false`                         |
+| `seaweedfs.filer.port`                        | Filer HTTP port (endpoint for the retention hook)                           | `8888`                          |
+| `seaweedfs.s3.enabled`                        | Run a standalone S3 gateway (the all-in-one pod provides one)               | `false`                         |
+| `seaweedfs.s3.port`                           | S3 API port (exposed on the `seaweedfs-all-in-one` svc)                     | `8333`                          |
+| `seaweedfs.allInOne.enabled`                  | Run the single-node all-in-one pod                                          | `true`                          |
+| `seaweedfs.allInOne.data.type`                | Volume source for `/data` (`persistentVolumeClaim`, `hostPath`, `emptyDir`) | `persistentVolumeClaim`         |
+| `seaweedfs.allInOne.data.size`                | Persistent volume size                                                      | `10Gi`                          |
+| `seaweedfs.allInOne.data.storageClass`        | Storage class for the PVC (`""` = cluster default)                          | `""`                            |
+| `seaweedfs.allInOne.s3.enabled`               | Expose the S3 gateway on the all-in-one pod                                 | `true`                          |
+| `seaweedfs.allInOne.s3.enableAuth`            | Require the `objectStorage` credentials on S3 requests                      | `true`                          |
+| `seaweedfs.allInOne.s3.existingConfigSecret`  | Secret holding the S3 identities (`seaweedfs_s3_config`)                    | `seaweedfs-s3-secret`           |
+| `seaweedfs.allInOne.s3.createBuckets`         | Buckets created by the post-install hook                                    | `operational`, `static-assets`  |
+| `seaweedfs.allInOne.s3.createBuckets[].ttl`   | Retention window for the bucket (e.g. `7d`)                                 | `7d` on `operational`           |
+| `seaweedfs.allInOne.resources`                | All-in-one pod resource requests/limits                                     | `100m`/`256Mi` … `500m`/`512Mi` |
+
+#### Object Retention
+
+Objects written to the `operational` bucket are deleted 7 days later. `static-assets` has
+no expiry.
+
+To change the window, set `ttl` on the bucket — a count of 1-255 followed by `m`, `h`,
+`d`, `w`, `M` (month) or `y`, so a year is written `1y` and not `365d`:
+
+```yaml
+seaweedfs:
+  allInOne:
+    s3:
+      createBuckets:
+        - name: operational
+          ttl: 30d
+        - name: static-assets
+```
+
+The new window applies to objects written after the next `helm upgrade`; objects already
+stored keep the expiry they were given when they were written.
+
+`operational` and `static-assets` both hold regenerable data, so either can be emptied
+by hand — substitute the bucket name:
+
+```bash
+# 1. drop the bucket and everything in it
+kubectl exec -n backline deploy/seaweedfs-all-in-one -- \
+  sh -c "echo 's3.bucket.delete -name operational' | weed shell"
+
+# 2. re-create it, empty
+kubectl exec -n backline deploy/seaweedfs-all-in-one -- \
+  sh -c "echo 's3.bucket.create -name operational' | weed shell"
+```
+
+The `ttl` still applies to the re-created bucket.
 
 ### Resource Profiles
 
