@@ -27,8 +27,8 @@ customCaCert: ""
 # ============================================================================
 # EXTERNAL SECRETS (optional)
 # ============================================================================
-# Source chart secrets from a secret manager (AWS Secrets Manager, Vault, ...)
-# through the External Secrets Operator (https://external-secrets.io). Enabling
+# Source chart secrets from any secret manager the External Secrets Operator
+# supports (https://external-secrets.io): AWS, Azure, Google, Vault, ... Enabling
 # a secret below renders an ExternalSecret in place of the Secret; the operator
 # syncs the provider value into a Secret of the same name, so nothing else in
 # the chart changes. The operator and a SecretStore/ClusterSecretStore must

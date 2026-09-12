@@ -60,8 +60,8 @@ arn:aws:iam::580550010989:role/OnPremOtelShipRole
 {{/*
 Tag for a janitor-managed Deployment (args: root, deployment, tag). An explicit tag wins.
 Otherwise reuse the tag currently deployed so helm upgrade keeps the janitor's choice; the
-bootstrap placeholder (lowest ticks, so any published build is newer) applies only when no
-Deployment exists yet or there is no cluster to look at (helm template, client dry-run).
+bootstrap placeholder (older than any published build) applies only when no Deployment
+exists yet or there is no cluster to look at (helm template, client dry-run).
 */}}
 {{- define "backline.image.tag" -}}
 {{- $placeholder := "0000001-0000000001" -}}

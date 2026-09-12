@@ -725,22 +725,84 @@ kubectl delete secret custom-ca -n backline
 
 ### External Secrets
 
-Each static secret above can be handed to the [External Secrets Operator](https://external-secrets.io) (ESO) instead of being written into `values.yaml`. When `externalSecrets.<secret>.enabled` is `true`, the chart renders an `ExternalSecret` in place of the `Secret`. ESO reads the value from your provider (AWS Secrets Manager, HashiCorp Vault, Azure Key Vault, Google Secret Manager, ...) and writes a `Secret` with the name and keys the chart expects, so Worker, GitProxy, Janitor and SeaweedFS need no changes.
+Each static secret above can be handed to the [External Secrets Operator](https://external-secrets.io) (ESO) instead of being written into `values.yaml`. When `externalSecrets.<secret>.enabled` is `true`, the chart renders an `ExternalSecret` in place of the `Secret`. ESO reads the value from your provider and writes a `Secret` with the name and keys the chart expects.
 
-**Prerequisites:** ESO installed in the cluster, and a `SecretStore` (in the Backline namespace) or `ClusterSecretStore` authorized against your provider. The chart creates neither. A minimal store for AWS Secrets Manager, with ESO authenticating through IRSA or EKS Pod Identity, looks like this (see the [ESO AWS provider docs](https://external-secrets.io/latest/provider/aws-secrets-manager/) for other authentication options):
+The chart is provider-agnostic. The ExternalSecrets it renders name only a store and the remote keys; the provider, its endpoint and its authentication live in the `SecretStore`, so the same values work with AWS Secrets Manager, Azure Key Vault, Google Secret Manager, HashiCorp Vault or any other [ESO provider](https://external-secrets.io/latest/provider/aws-secrets-manager/).
+
+**Prerequisites:** ESO installed in the cluster, and a `SecretStore` (in the Backline namespace) or `ClusterSecretStore` authorized against your provider. The chart creates neither. Minimal stores for the common providers, each authenticating with the cluster's workload identity (the provider pages linked above list the other authentication options):
 
 ```yaml
+# AWS Secrets Manager, via IRSA or EKS Pod Identity
 apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
-  name: aws-store
+  name: backline-secrets
   namespace: backline
 spec:
   provider:
     aws:
       service: SecretsManager
       region: us-east-1
+---
+# Azure Key Vault, via Azure Workload Identity
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: backline-secrets
+  namespace: backline
+spec:
+  provider:
+    azurekv:
+      authType: WorkloadIdentity
+      vaultUrl: https://<vault-name>.vault.azure.net
+      serviceAccountRef:
+        name: backline-secrets   # ServiceAccount federated with the managed identity
+---
+# Google Secret Manager, via GKE Workload Identity
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: backline-secrets
+  namespace: backline
+spec:
+  provider:
+    gcpsm:
+      projectID: <project-id>
+      auth:
+        workloadIdentity:
+          clusterLocation: <region-or-zone>
+          clusterName: <cluster-name>
+          serviceAccountRef:
+            name: backline-secrets   # ServiceAccount bound to a GCP service account
+---
+# HashiCorp Vault (KV v2), via Kubernetes auth
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: backline-secrets
+  namespace: backline
+spec:
+  provider:
+    vault:
+      server: https://vault.example.internal
+      path: secret
+      version: v2
+      auth:
+        kubernetes:
+          mountPath: kubernetes
+          role: backline
 ```
+
+What `remoteRef.key` refers to depends on the provider:
+
+| Provider              | `remoteRef.key`                                            | Notes                                                                                                                                                                  |
+| --------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AWS Secrets Manager   | Secret name or ARN, e.g. `backline/access-key`             | `property` selects one key of a JSON secret                                                                                                                            |
+| Azure Key Vault       | Secret name, e.g. `backline-access-key` (or `secret/<name>`) | Names allow letters, digits and hyphens only. `property` selects one key of a JSON secret. Store the CA as a secret holding the PEM text, not as a Key Vault certificate |
+| Google Secret Manager | Secret ID, e.g. `backline-access-key`                      | Names allow letters, digits, hyphens and underscores. `version` defaults to `latest`. `property` selects one key of a JSON secret                                     |
+| HashiCorp Vault       | Path below the store's mount, e.g. `backline/access-key`   | Set `property` to the field name; without it ESO returns the whole secret as JSON                                                                                      |
+
+Names made of letters, digits and hyphens are accepted by every provider, so the examples below use that form.
 
 | Chart secret         | Enable with                            | Keys ESO must produce                                                   | Inline value it replaces                              |
 | -------------------- | -------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------- |
@@ -748,48 +810,63 @@ spec:
 | `custom-ca`          | `externalSecrets.customCaCert.enabled` | `ca.crt` (PEM)                                                          | `customCaCert`                                        |
 | `seaweedfs-s3-secret` | `externalSecrets.objectStorage.enabled` | `accessKey`, `secretKey`. The chart derives `seaweedfs_s3_config` from them | `objectStorage.accessKey`, `objectStorage.secretKey` |
 
-The dynamic secrets (`session-jwt`, `dockerconfig`, `langfuse-config`) are issued by Backline cloud and rotated by the Janitor, so they are not sourced externally.
+The secrets the Janitor maintains (`session-jwt`, `dockerconfig` and `langfuse-config`; see [Dynamic Secrets](#dynamic-secrets)) are rotated automatically and cannot be sourced externally.
 
-Secrets are independent: enable only the ones you keep in a secret manager and set the rest inline. Example with every secret in AWS Secrets Manager:
+Secrets are independent: enable only the ones you keep in a secret manager and set the rest inline. Example with every secret in one store, whichever provider backs it:
 
 ```yaml
 environment: "production"
 
 externalSecrets:
   secretStoreRef:
-    name: aws-secretsmanager
-    kind: ClusterSecretStore
+    name: backline-secrets
+    kind: SecretStore
   accessKey:
     enabled: true
     remoteRef:
-      key: backline/access-key        # plain-text secret
+      key: backline-access-key        # plain-text secret
   customCaCert:
     enabled: true
     remoteRef:
-      key: backline/internal-ca       # PEM bundle, as text
+      key: backline-internal-ca       # PEM bundle, as text
   objectStorage:
     enabled: true
     accessKey:
       remoteRef:
-        key: backline/seaweedfs       # JSON secret: {"accessKey": "...", "secretKey": "..."}
+        key: backline-seaweedfs       # JSON secret: {"accessKey": "...", "secretKey": "..."}
         property: accessKey
     secretKey:
       remoteRef:
-        key: backline/seaweedfs
+        key: backline-seaweedfs
         property: secretKey
 ```
 
-`remoteRef` is passed to ESO unchanged, so any field ESO supports for your provider works (`property`, `version`, `decodingStrategy`, `metadataPolicy`). A secret may also override the store or refresh interval, for example a CA kept in Vault and stored base64-encoded:
+If your provider stores one value per secret, drop `property` and point the two `objectStorage` entries at separate secrets. Secrets may also come from different stores, for example a shared `ClusterSecretStore` by default and a Vault store for the access key only:
+
+```yaml
+externalSecrets:
+  secretStoreRef:
+    name: platform-secrets
+    kind: ClusterSecretStore
+  accessKey:
+    enabled: true
+    secretStoreRef:
+      name: vault-backline
+      kind: SecretStore
+    remoteRef:
+      key: backline/access-key
+      property: value
+```
+
+`remoteRef` is passed to ESO unchanged, so any field ESO supports for your provider works (`property`, `version`, `decodingStrategy`, `metadataPolicy`). A secret may also override the refresh interval, for example a CA that is stored base64-encoded and rarely changes:
 
 ```yaml
 externalSecrets:
   customCaCert:
     enabled: true
     refreshInterval: 24h
-    secretStoreRef:
-      name: vault-pki
     remoteRef:
-      key: pki/internal-ca
+      key: backline-internal-ca
       decodingStrategy: Base64
 ```
 
@@ -971,7 +1048,7 @@ helm uninstall backline --namespace backline
 
 **Note:** The PersistentVolumeClaim may not be automatically deleted if not created by the chart.
 
-The Secrets `accesskey`, `custom-ca` and `seaweedfs-s3-secret` are kept on uninstall (they are marked `helm.sh/resource-policy: keep` so they can move between Helm and the External Secrets Operator), as are the janitor-managed `session-jwt`, `dockerconfig` and `langfuse-config`. Delete the namespace, or the secrets explicitly, to remove them:
+The Secrets `accesskey`, `custom-ca` and `seaweedfs-s3-secret` are kept on uninstall (they are marked `helm.sh/resource-policy: keep` so they can move between Helm and the External Secrets Operator), as are the Janitor-managed `session-jwt`, `dockerconfig` and `langfuse-config`. Delete the namespace, or the secrets explicitly, to remove them:
 
 ```bash
 kubectl delete secret -n backline accesskey custom-ca seaweedfs-s3-secret session-jwt dockerconfig langfuse-config --ignore-not-found
