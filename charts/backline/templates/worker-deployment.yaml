@@ -29,7 +29,7 @@ spec:
     {{- end}}
       containers:
         - name: worker
-          image: "{{ include "image.registry" . }}/{{ include "worker.image.name" . }}:{{ .Values.worker.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "image.registry" . }}/{{ include "worker.image.name" . }}:{{ include "backline.image.tag" (dict "root" . "deployment" "worker" "tag" .Values.worker.image.tag) }}"
           imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
           securityContext:
             {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 12 }}
@@ -85,7 +85,7 @@ spec:
           {{- with include "backline.proxyEnv" $ | trim }}
             {{- . | nindent 12 }}
           {{- end }}
-          {{- if .Values.customCaCert }}
+          {{- if include "backline.customCa.enabled" . }}
             - name: CUSTOM_CA_SECRET_NAME
               value: "custom-ca"
             - name: SSL_CERT_DIR
@@ -95,7 +95,7 @@ spec:
           {{- end }}
           volumeMounts:
             {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 12 }}
-            {{- if .Values.customCaCert }}
+            {{- if include "backline.customCa.enabled" . }}
             - name: custom-ca
               mountPath: /etc/backline/ca
               readOnly: true
@@ -105,7 +105,7 @@ spec:
         {{- end }}
       volumes:
       {{- include "adot.volumes" . | nindent 8 }}
-      {{- if .Values.customCaCert }}
+      {{- if include "backline.customCa.enabled" . }}
         - name: custom-ca
           secret:
             secretName: custom-ca

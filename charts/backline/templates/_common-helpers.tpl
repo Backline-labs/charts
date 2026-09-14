@@ -1,6 +1,6 @@
 {{- define "common.validateRequired" -}}
-{{- if not .Values.accessKey }}
-  {{- fail "accessKey is required. Please set it in values.yaml or with --set accessKey=<value>" }}
+{{- if not (or .Values.accessKey ((.Values.externalSecrets).accessKey).enabled) }}
+  {{- fail "accessKey is required. Set it in values.yaml, with --set accessKey=<value>, or source it from a secret manager with externalSecrets.accessKey.enabled=true" }}
 {{- end }}
 {{- if not .Values.environment }}
   {{- fail "environment is required. Please set it in values.yaml or with --set environment=<value>" }}
@@ -10,6 +10,11 @@
   {{- include "backline.validateTtl" .ttl }}
 {{- end }}
 {{- end }}
+{{- end -}}
+
+{{/* Non-empty when a custom CA is supplied, inline or through an ExternalSecret. */}}
+{{- define "backline.customCa.enabled" -}}
+{{- if or .Values.customCaCert ((.Values.externalSecrets).customCaCert).enabled -}}true{{- end -}}
 {{- end -}}
 
 {{- define "secretname.dockerconfig" -}}
@@ -50,6 +55,29 @@ arn:aws:iam::580550010989:role/OnPremOtelShipRole
 
 {{- define "image.namePrefix" -}}
 {{- if ne .Values.environment "staging" -}}prod-{{- end -}}
+{{- end -}}
+
+{{/*
+Tag for a janitor-managed Deployment (args: root, deployment, tag). An explicit tag wins.
+Otherwise reuse the tag currently deployed so helm upgrade keeps the janitor's choice; the
+bootstrap placeholder (older than any published build) applies only when no Deployment
+exists yet or there is no cluster to look at (helm template, client dry-run).
+*/}}
+{{- define "backline.image.tag" -}}
+{{- $placeholder := "0000001-0000000001" -}}
+{{- $tag := toString (default "" .tag) -}}
+{{- if or (not $tag) (eq $tag $placeholder) -}}
+{{- $tag = $placeholder -}}
+{{- $ns := default .root.Release.Namespace .root.Values.namespaceOverride | trunc 63 | trimSuffix "-" -}}
+{{- with lookup "apps/v1" "Deployment" $ns .deployment -}}
+{{- range .spec.template.spec.containers -}}
+{{- if eq .name $.deployment -}}
+{{- $tag = splitList ":" .image | last -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $tag -}}
 {{- end -}}
 
 {{- define "worker.image.name" -}}{{ include "image.namePrefix" . }}runner{{- end -}}

@@ -24,6 +24,52 @@ proxy:
 # Generate with:  base64 -w0 ca.pem   (or:  base64 < ca.pem | tr -d '\n')
 customCaCert: ""
 
+# ============================================================================
+# EXTERNAL SECRETS (optional)
+# ============================================================================
+# Source chart secrets from any secret manager the External Secrets Operator
+# supports (https://external-secrets.io): AWS, Azure, Google, Vault, ... Enabling
+# a secret below renders an ExternalSecret in place of the Secret; the operator
+# syncs the provider value into a Secret of the same name, so nothing else in
+# the chart changes. The operator and a SecretStore/ClusterSecretStore must
+# already exist. Inline values (accessKey, customCaCert, objectStorage.*) are
+# ignored for a secret that is enabled here. Enabling or disabling a secret on
+# an existing install is an ordinary helm upgrade; the Secret object is handed
+# over between Helm and the operator without being recreated.
+externalSecrets:
+  # ESO 0.17+ serves external-secrets.io/v1; older operators need v1beta1.
+  apiVersion: external-secrets.io/v1
+  # Defaults for every ExternalSecret below. Any secret may carry its own
+  # secretStoreRef / refreshInterval to override them.
+  secretStoreRef:
+    name: ""
+    kind: SecretStore # or ClusterSecretStore
+  refreshInterval: 1h
+  # remoteRef blocks are passed to ESO verbatim: key is required; property,
+  # version, decodingStrategy, ... are accepted as-is.
+
+  # Backline access key -> Secret "accesskey" (key ACCESS_KEY)
+  accessKey:
+    enabled: false
+    remoteRef:
+      key: ""
+  # Internal CA bundle -> Secret "custom-ca" (key ca.crt). The remote value
+  # must be PEM; add `decodingStrategy: Base64` if it is stored base64-encoded.
+  customCaCert:
+    enabled: false
+    remoteRef:
+      key: ""
+  # SeaweedFS S3 credentials -> Secret "seaweedfs-s3-secret". The gateway's
+  # identity config is derived from the two fetched values.
+  objectStorage:
+    enabled: false
+    accessKey:
+      remoteRef:
+        key: ""
+    secretKey:
+      remoteRef:
+        key: ""
+
 # OBJECT STORAGE (SeaweedFS, S3-compatible)
 objectStorage:
   accessKey: "backline"
@@ -92,7 +138,9 @@ janitor:
 worker:
   replicaCount: 1
   image:
-    tag: "0000001-0000000001"
+    # Leave empty: the janitor keeps the image on the newest published build and
+    # helm upgrade preserves the tag it set. Set a tag only to override that.
+    tag: ""
     pullPolicy: IfNotPresent
   service:
     httpPort: 8080
@@ -130,7 +178,9 @@ gitproxy:
   enabled: false
   replicaCount: 1
   image:
-    tag: "0000001-0000000001"
+    # Leave empty: the janitor keeps the image on the newest published build and
+    # helm upgrade preserves the tag it set. Set a tag only to override that.
+    tag: ""
     pullPolicy: IfNotPresent
   service:
     httpPort: 8080

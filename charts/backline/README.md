@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.4.0
+**Chart Version:** 1.5.0
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -46,6 +46,8 @@ graph TB
     - [Installation with Custom Values File](#installation-with-custom-values-file)
   - [Configuration Parameters](#configuration-parameters)
     - [Global Configuration](#global-configuration)
+    - [Proxy Configuration](#proxy-configuration)
+    - [External Secrets Configuration](#external-secrets-configuration)
     - [Janitor Configuration](#janitor-configuration)
     - [Worker Configuration](#worker-configuration)
       - [Worker OpenTelemetry Configuration](#worker-opentelemetry-configuration)
@@ -80,6 +82,7 @@ graph TB
     - [Troubleshooting Network Policy Issues](#troubleshooting-network-policy-issues)
   - [Secret Management](#secret-management)
     - [Static Secrets](#static-secrets)
+    - [External Secrets](#external-secrets)
     - [Dynamic Secrets](#dynamic-secrets)
     - [Troubleshooting Secret Issues](#troubleshooting-secret-issues)
   - [Configuration Examples](#configuration-examples)
@@ -102,6 +105,7 @@ graph TB
   - Source code management systems (GitHub, GitLab, Bitbucket)
   - Package managers (npm, Go modules, Maven, pip, etc.)
   - See more in the Network Policy Recommendations section below
+- Optional: [External Secrets Operator](https://external-secrets.io) with a `SecretStore` or `ClusterSecretStore`, if you want the chart's secrets sourced from a secret manager (see [External Secrets](#external-secrets))
 
 ## Architecture
 
@@ -156,7 +160,7 @@ helm install backline backline-ai/backline \
 
 | Parameter           | Description                                                                                                                                                                     | Required | Default      |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------ |
-| `accessKey`         | Authentication key for API access                                                                                                                                               | Yes      | `""`         |
+| `accessKey`         | Authentication key for API access. Not needed when sourced from a secret manager via `externalSecrets.accessKey`                                                                | Yes      | `""`         |
 | `namespaceOverride` | Override the default namespace                                                                                                                                                  | No       | `backline`   |
 | `environment`       | Backline AI SaaS endpoint environment (`staging` or `production`)                                                                                                               | Yes      | `production` |
 | `customCaCert`      | Base64-encoded PEM CA certificate(s) used for trusted communication with a self-hosted git host (internal/corporate CA). See "Trusting a self-hosted git server's internal CA". | No       | `""`         |
@@ -171,9 +175,29 @@ For clusters that route outbound traffic through a corporate proxy. When set, th
 | `proxy.httpsProxy` | Outbound HTTPS proxy URL                                                                                   | `""`    |
 | `proxy.noProxy`    | Comma-separated hosts/CIDRs to reach directly — include your internal git server and in-cluster addresses | `""`    |
 
+### External Secrets Configuration
+
+Source the chart's static secrets from a secret manager through the External Secrets Operator instead of placing values in `values.yaml`. Enabling a secret renders an `ExternalSecret` in place of the `Secret`; see [External Secrets](#external-secrets) for the model, examples and troubleshooting.
+
+| Parameter                                           | Description                                                                                                                   | Default                   |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `externalSecrets.apiVersion`                        | API version served by your operator. Operators older than 0.17 need `external-secrets.io/v1beta1`                              | `external-secrets.io/v1`  |
+| `externalSecrets.secretStoreRef.name`               | Default `SecretStore` / `ClusterSecretStore` every ExternalSecret reads from. Required once any secret below is enabled        | `""`                      |
+| `externalSecrets.secretStoreRef.kind`               | `SecretStore` (namespaced) or `ClusterSecretStore`                                                                            | `SecretStore`             |
+| `externalSecrets.refreshInterval`                   | Default interval at which the operator re-reads the provider                                                                  | `1h`                      |
+| `externalSecrets.accessKey.enabled`                 | Sync the `accesskey` Secret from the provider. `accessKey` is then ignored                                                     | `false`                   |
+| `externalSecrets.accessKey.remoteRef`               | ESO `remoteRef` for the `ACCESS_KEY` value. `key` is required; other ESO fields pass through                                   | `{key: ""}`               |
+| `externalSecrets.customCaCert.enabled`              | Sync the `custom-ca` Secret from the provider. `customCaCert` is then ignored                                                  | `false`                   |
+| `externalSecrets.customCaCert.remoteRef`            | ESO `remoteRef` for the PEM CA bundle. Add `decodingStrategy: Base64` if the provider stores it base64-encoded                 | `{key: ""}`               |
+| `externalSecrets.objectStorage.enabled`             | Sync the `seaweedfs-s3-secret` Secret from the provider. `objectStorage.accessKey` / `objectStorage.secretKey` are then ignored | `false`                   |
+| `externalSecrets.objectStorage.accessKey.remoteRef` | ESO `remoteRef` for the S3 access key                                                                                         | `{key: ""}`               |
+| `externalSecrets.objectStorage.secretKey.remoteRef` | ESO `remoteRef` for the S3 secret key                                                                                         | `{key: ""}`               |
+| `externalSecrets.<secret>.secretStoreRef`           | Per-secret override of the default store (`name` and/or `kind`)                                                               | unset                     |
+| `externalSecrets.<secret>.refreshInterval`          | Per-secret override of the default refresh interval                                                                           | unset                     |
+
 ### Janitor Configuration
 
-The Janitor component runs periodic maintenance tasks as a CronJob.
+The Janitor component runs periodic maintenance tasks as a CronJob. It also keeps the Worker and GitProxy images on the newest published build, and `helm upgrade` preserves the tag it set, so leave `worker.image.tag` and `gitproxy.image.tag` empty unless you deliberately want to override it.
 
 | Parameter                           | Description        | Default              |
 | ----------------------------------- | ------------------ | -------------------- |
@@ -194,7 +218,7 @@ The Worker is the main application component.
 | ---------------------------------- | -------------------------------------------------- | ------------------------------------------------------ |
 | `worker.replicaCount`              | Number of worker replicas                          | `1`                                                    |
 | `worker.image.name`                | Image name                                         | `prod-runner`                                          |
-| `worker.image.tag`                 | Image tag                                          | `0000001-0000000001`                                   |
+| `worker.image.tag`                 | Image tag. Leave empty: the Janitor tracks the newest published build and `helm upgrade` keeps the tag it set | `""`                                                   |
 | `worker.image.pullPolicy`          | Image pull policy                                  | `IfNotPresent`                                         |
 | `worker.service.httpPort`          | HTTP service port                                  | `8080`                                                 |
 | `worker.resources.requests.cpu`    | CPU request                                        | `500m`                                                 |
@@ -225,7 +249,7 @@ GitProxy enables Backline to interact with on-prem git servers that are not acce
 | `gitproxy.enabled` | Enable GitProxy component | `false` |
 | `gitproxy.replicaCount` | Number of GitProxy replicas | `1` |
 | `gitproxy.image.name` | Image name | `prod-gitproxy` |
-| `gitproxy.image.tag` | Image tag | `0000001-0000000001` |
+| `gitproxy.image.tag` | Image tag. Leave empty: the Janitor tracks the newest published build and `helm upgrade` keeps the tag it set | `""` |
 | `gitproxy.image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `gitproxy.adapter.skipCertVerification` | Skip TLS verification for adapter connection | `false` |
 | `gitproxy.adapter.maxRetries` | Max retries for adapter HTTP calls | `3` |
@@ -680,8 +704,192 @@ The chart manages secrets automatically through the Janitor CronJob. Understandi
 **`accesskey`** - Created during chart installation
 - Type: `Opaque`
 - Contains: `ACCESS_KEY` for API authentication
-- Source: Provided via `accessKey` in values.yaml
+- Source: Provided via `accessKey` in values.yaml, or synced from a secret manager via `externalSecrets.accessKey`
 - Lifecycle: Created once, not automatically updated
+
+**`custom-ca`** - Created only when a custom CA is configured
+- Type: `Opaque`
+- Contains: `ca.crt`, the PEM CA bundle mounted into Worker and GitProxy
+- Source: Provided via `customCaCert` in values.yaml, or synced from a secret manager via `externalSecrets.customCaCert`
+
+**`seaweedfs-s3-secret`** - Created when the bundled SeaweedFS is enabled
+- Type: `Opaque`
+- Contains: `accessKey` and `secretKey` used by the Worker, plus `seaweedfs_s3_config`, the identity file the S3 gateway loads
+- Source: Provided via `objectStorage.accessKey` / `objectStorage.secretKey` in values.yaml, or synced from a secret manager via `externalSecrets.objectStorage`
+
+All three carry `helm.sh/resource-policy: keep`, so Helm never deletes them. When one of them drops out of the release, because you removed `customCaCert`, disabled the bundled SeaweedFS, or turned off its ExternalSecret without providing an inline value, the Secret object stays in the cluster and has to be removed by hand:
+
+```bash
+kubectl delete secret custom-ca -n backline
+```
+
+### External Secrets
+
+Each static secret above can be handed to the [External Secrets Operator](https://external-secrets.io) (ESO) instead of being written into `values.yaml`. When `externalSecrets.<secret>.enabled` is `true`, the chart renders an `ExternalSecret` in place of the `Secret`. ESO reads the value from your provider and writes a `Secret` with the name and keys the chart expects.
+
+The chart is provider-agnostic. The ExternalSecrets it renders name only a store and the remote keys; the provider, its endpoint and its authentication live in the `SecretStore`, so the same values work with AWS Secrets Manager, Azure Key Vault, Google Secret Manager, HashiCorp Vault or any other [ESO provider](https://external-secrets.io/latest/provider/aws-secrets-manager/).
+
+**Prerequisites:** ESO installed in the cluster, and a `SecretStore` (in the Backline namespace) or `ClusterSecretStore` authorized against your provider. The chart creates neither. Minimal stores for the common providers, each authenticating with the cluster's workload identity (the provider pages linked above list the other authentication options):
+
+```yaml
+# AWS Secrets Manager, via IRSA or EKS Pod Identity
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: backline-secrets
+  namespace: backline
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: us-east-1
+---
+# Azure Key Vault, via Azure Workload Identity
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: backline-secrets
+  namespace: backline
+spec:
+  provider:
+    azurekv:
+      authType: WorkloadIdentity
+      vaultUrl: https://<vault-name>.vault.azure.net
+      serviceAccountRef:
+        name: backline-secrets   # ServiceAccount federated with the managed identity
+---
+# Google Secret Manager, via GKE Workload Identity
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: backline-secrets
+  namespace: backline
+spec:
+  provider:
+    gcpsm:
+      projectID: <project-id>
+      auth:
+        workloadIdentity:
+          clusterLocation: <region-or-zone>
+          clusterName: <cluster-name>
+          serviceAccountRef:
+            name: backline-secrets   # ServiceAccount bound to a GCP service account
+---
+# HashiCorp Vault (KV v2), via Kubernetes auth
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: backline-secrets
+  namespace: backline
+spec:
+  provider:
+    vault:
+      server: https://vault.example.internal
+      path: secret
+      version: v2
+      auth:
+        kubernetes:
+          mountPath: kubernetes
+          role: backline
+```
+
+What `remoteRef.key` refers to depends on the provider:
+
+| Provider              | `remoteRef.key`                                            | Notes                                                                                                                                                                  |
+| --------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AWS Secrets Manager   | Secret name or ARN, e.g. `backline/access-key`             | `property` selects one key of a JSON secret                                                                                                                            |
+| Azure Key Vault       | Secret name, e.g. `backline-access-key` (or `secret/<name>`) | Names allow letters, digits and hyphens only. `property` selects one key of a JSON secret. Store the CA as a secret holding the PEM text, not as a Key Vault certificate |
+| Google Secret Manager | Secret ID, e.g. `backline-access-key`                      | Names allow letters, digits, hyphens and underscores. `version` defaults to `latest`. `property` selects one key of a JSON secret                                     |
+| HashiCorp Vault       | Path below the store's mount, e.g. `backline/access-key`   | Set `property` to the field name; without it ESO returns the whole secret as JSON                                                                                      |
+
+Names made of letters, digits and hyphens are accepted by every provider, so the examples below use that form.
+
+| Chart secret         | Enable with                            | Keys ESO must produce                                                   | Inline value it replaces                              |
+| -------------------- | -------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------- |
+| `accesskey`          | `externalSecrets.accessKey.enabled`    | `ACCESS_KEY`                                                            | `accessKey`                                           |
+| `custom-ca`          | `externalSecrets.customCaCert.enabled` | `ca.crt` (PEM)                                                          | `customCaCert`                                        |
+| `seaweedfs-s3-secret` | `externalSecrets.objectStorage.enabled` | `accessKey`, `secretKey`. The chart derives `seaweedfs_s3_config` from them | `objectStorage.accessKey`, `objectStorage.secretKey` |
+
+The secrets the Janitor maintains (`session-jwt`, `dockerconfig` and `langfuse-config`; see [Dynamic Secrets](#dynamic-secrets)) are rotated automatically and cannot be sourced externally.
+
+Secrets are independent: enable only the ones you keep in a secret manager and set the rest inline. Example with every secret in one store, whichever provider backs it:
+
+```yaml
+environment: "production"
+
+externalSecrets:
+  secretStoreRef:
+    name: backline-secrets
+    kind: SecretStore
+  accessKey:
+    enabled: true
+    remoteRef:
+      key: backline-access-key        # plain-text secret
+  customCaCert:
+    enabled: true
+    remoteRef:
+      key: backline-internal-ca       # PEM bundle, as text
+  objectStorage:
+    enabled: true
+    accessKey:
+      remoteRef:
+        key: backline-seaweedfs       # JSON secret: {"accessKey": "...", "secretKey": "..."}
+        property: accessKey
+    secretKey:
+      remoteRef:
+        key: backline-seaweedfs
+        property: secretKey
+```
+
+If your provider stores one value per secret, drop `property` and point the two `objectStorage` entries at separate secrets. Secrets may also come from different stores, for example a shared `ClusterSecretStore` by default and a Vault store for the access key only:
+
+```yaml
+externalSecrets:
+  secretStoreRef:
+    name: platform-secrets
+    kind: ClusterSecretStore
+  accessKey:
+    enabled: true
+    secretStoreRef:
+      name: vault-backline
+      kind: SecretStore
+    remoteRef:
+      key: backline/access-key
+      property: value
+```
+
+`remoteRef` is passed to ESO unchanged, so any field ESO supports for your provider works (`property`, `version`, `decodingStrategy`, `metadataPolicy`). A secret may also override the refresh interval, for example a CA that is stored base64-encoded and rarely changes:
+
+```yaml
+externalSecrets:
+  customCaCert:
+    enabled: true
+    refreshInterval: 24h
+    remoteRef:
+      key: backline-internal-ca
+      decodingStrategy: Base64
+```
+
+Notes:
+
+- The provider value for `custom-ca` is the PEM text itself unless you set `decodingStrategy: Base64`. This differs from the inline `customCaCert`, which takes base64.
+- Pods read these secrets at start, through environment variables and volume mounts. After you rotate a value in the provider, ESO updates the Secret on its next refresh, but running Worker, GitProxy and SeaweedFS pods keep the old value until restarted, for example with `kubectl rollout restart deployment/worker -n backline`.
+- Switching a secret between inline values and ESO, in either direction, is an ordinary `helm upgrade`. The chart-managed Secrets carry `helm.sh/resource-policy: keep` and the ExternalSecrets use `creationPolicy: Orphan`, so the same Secret object is handed over between Helm and ESO without being deleted, and running pods are not disturbed. A secret that did not exist before the switch (for example `custom-ca` on an install without `customCaCert`) is created by ESO a moment after the new pods reference it, so a pod may log `FailedMount` once and then start normally. A consequence of the `keep` policy is that these Secrets also survive `helm uninstall` (see [Uninstall](#uninstall)), and that disabling an ExternalSecret without an inline replacement leaves the synced Secret in place until you delete it (see [Static Secrets](#static-secrets)).
+- Operators older than 0.17 do not serve `external-secrets.io/v1`. Set `externalSecrets.apiVersion: external-secrets.io/v1beta1`. ESO 2.x serves only `v1`.
+
+Verify that each ExternalSecret has synced:
+
+```bash
+kubectl get externalsecret -n backline
+# STATUS should read SecretSynced and READY True. If not, the events explain why:
+kubectl describe externalsecret accesskey -n backline
+```
+
+Troubleshooting:
+
+- **`SecretSyncedError` with an authentication or connection error:** the store cannot reach, or is not authorized on, the provider. Check `kubectl get secretstore,clustersecretstore -A` and the store's events.
+- **`no matches for kind "ExternalSecret"` on install:** ESO is not installed, or it serves a different API version than `externalSecrets.apiVersion`.
+- **Worker pod in `CreateContainerConfigError` with `secret "accesskey" not found`:** the ExternalSecret has not synced yet. Pods start once it does; check its status as above.
 
 ### Dynamic Secrets
 
@@ -838,7 +1046,13 @@ Remove the Helm release:
 helm uninstall backline --namespace backline
 ```
 
-**Note:** The PersistentVolumeClaim may not be automatically deleted if not created by the chart
+**Note:** The PersistentVolumeClaim may not be automatically deleted if not created by the chart.
+
+The Secrets `accesskey`, `custom-ca` and `seaweedfs-s3-secret` are kept on uninstall (they are marked `helm.sh/resource-policy: keep` so they can move between Helm and the External Secrets Operator), as are the Janitor-managed `session-jwt`, `dockerconfig` and `langfuse-config`. Delete the namespace, or the secrets explicitly, to remove them:
+
+```bash
+kubectl delete secret -n backline accesskey custom-ca seaweedfs-s3-secret session-jwt dockerconfig langfuse-config --ignore-not-found
+```
 
 ## Troubleshooting
 
