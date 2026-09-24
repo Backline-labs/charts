@@ -65,6 +65,8 @@ data:
         endpoint: ${env:LANGFUSE_ENDPOINT}
         headers:
           Authorization: "Basic ${env:LANGFUSE_BASIC_AUTH}"
+          # Without it Langfuse v4 delays OTLP ingestion by up to 15 minutes.
+          x-langfuse-ingestion-version: "4"
         tls:
           insecure: ${env:LANGFUSE_TLS_INSECURE}
         timeout: ${env:LANGFUSE_TIMEOUT}
