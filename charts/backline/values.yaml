@@ -93,6 +93,23 @@ seaweedfs:
   filer:
     enabled: false
     port: 8888
+    # Read by the bucket-creation hook even with the filer disabled.
+    podSecurityContext: &seaweedfsPodSecurityContext
+      enabled: true
+      # The image's own seaweed user; fsGroup lets it take over data written as root.
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+      fsGroupChangePolicy: OnRootMismatch
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext: &seaweedfsContainerSecurityContext
+      enabled: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
   s3:
     enabled: false
     port: 8333
@@ -111,6 +128,8 @@ seaweedfs:
         - name: operational
           ttl: 7d
         - name: static-assets
+    podSecurityContext: *seaweedfsPodSecurityContext
+    containerSecurityContext: *seaweedfsContainerSecurityContext
     resources:
       requests:
         cpu: "100m"
