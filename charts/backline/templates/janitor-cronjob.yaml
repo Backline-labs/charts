@@ -14,12 +14,14 @@ spec:
         spec:
           serviceAccountName: janitor
           restartPolicy: OnFailure
+          securityContext:
+            {{- include "common.podSecurityContext" . | nindent 12 }}
           containers:
           - name: janitor
             image: {{ $.Values.janitor.image.registry }}/{{ $.Values.janitor.image.name }}:{{ $.Values.janitor.image.tag }}
             imagePullPolicy: {{ $.Values.janitor.image.pullPolicy }}
             securityContext:
-              {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 14 }}
+              {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" true) | nindent 14 }}
             resources:
               {{- toYaml .Values.janitor.resources | nindent 14 }}
             env:
@@ -30,9 +32,17 @@ spec:
                   key: ACCESS_KEY
             - name: CURL_CA_BUNDLE
               value: /etc/ssl/certs/ca-certificates.crt
+            # Non-root with a read-only root filesystem: kubectl caches under $HOME.
+            - name: HOME
+              value: /tmp
             {{- with include "backline.proxyEnv" $ | trim }}
             {{- . | nindent 12 }}
             {{- end }}
+            volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: logs
+              mountPath: {{ include "logging.dir" . }}
             command:
             - /bin/sh
             - -c
@@ -337,3 +347,8 @@ spec:
               {{- end }}
 
               } 2>&1 | tee -a "$LOG_FILE"
+          volumes:
+          - name: tmp
+            emptyDir: {}
+          - name: logs
+            emptyDir: {}

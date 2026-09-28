@@ -7,9 +7,11 @@ template:
   spec:
     restartPolicy: Never
     securityContext:
-      privileged: false
+      runAsNonRoot: true
       fsGroup: 1000
       fsGroupChangePolicy: OnRootMismatch
+      seccompProfile:
+        type: RuntimeDefault
     imagePullSecrets:
       - name: {{ include "secretname.dockerconfig" . }}
     containers:
@@ -19,6 +21,7 @@ template:
         securityContext:
           runAsUser: 1000
           runAsGroup: 1000
+          allowPrivilegeEscalation: false
           capabilities:
             drop:
               - ALL

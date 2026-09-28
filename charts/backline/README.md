@@ -54,6 +54,7 @@ graph TB
     - [GitProxy Configuration](#gitproxy-configuration)
     - [SeaweedFS Configuration](#seaweedfs-configuration)
       - [Object Retention](#object-retention)
+    - [Pod Security](#pod-security)
     - [Resource Profiles](#resource-profiles)
   - [High Availability Recommendations](#high-availability-recommendations)
     - [Component Availability Model](#component-availability-model)
@@ -318,6 +319,8 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 | `seaweedfs.allInOne.s3.createBuckets`         | Buckets created by the post-install hook                                    | `operational`, `static-assets`  |
 | `seaweedfs.allInOne.s3.createBuckets[].ttl`   | Retention window for the bucket (e.g. `7d`)                                 | `7d` on `operational`           |
 | `seaweedfs.allInOne.resources`                | All-in-one pod resource requests/limits                                     | `100m`/`256Mi` … `500m`/`512Mi` |
+| `seaweedfs.allInOne.podSecurityContext`       | All-in-one pod security context (see [Pod Security](#pod-security))         | UID/GID/fsGroup `1000`          |
+| `seaweedfs.filer.podSecurityContext`          | Bucket-creation hook pod security context (read even with the filer off)    | UID/GID/fsGroup `1000`          |
 
 #### Object Retention
 
@@ -354,6 +357,20 @@ kubectl exec -n backline deploy/seaweedfs-all-in-one -- \
 ```
 
 The `ttl` still applies to the re-created bucket.
+
+### Pod Security
+
+Every pod the chart deploys, and every job the worker launches, meets the Kubernetes
+Pod Security Standards `restricted` profile, so the chart installs under Pod Security
+Admission or policy engines such as Kyverno enforcing `restricted`. Jobs rely on a
+worker image that fills in the required security context; older worker images launch
+jobs that `restricted` rejects.
+
+SeaweedFS runs as its image's `seaweed` user (UID 1000) and relies on `fsGroup` to
+own `/data`. On upgrade from an older chart, the kubelet regroups existing root-owned
+data to GID 1000 on first start. Volume types that ignore `fsGroup` (many NFS
+provisioners) need the data chowned to `1000:1000` once. `allInOne.data.type: hostPath`
+is not permitted under `restricted`.
 
 ### Resource Profiles
 

@@ -31,6 +31,8 @@ runAsUser: 1020
 runAsGroup: 1010
 fsGroup: 1010
 fsGroupChangePolicy: OnRootMismatch
+seccompProfile:
+  type: RuntimeDefault
 {{- end -}}
 
 {{- define "logging.dir" -}}
