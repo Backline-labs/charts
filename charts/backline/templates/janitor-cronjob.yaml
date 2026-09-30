@@ -12,10 +12,12 @@ spec:
     spec:
       # With concurrencyPolicy Forbid, a hung run would otherwise block every later run.
       activeDeadlineSeconds: 300
+      # Never + a small backoffLimit: each retry gets a new pod, so failed attempts keep their logs.
+      backoffLimit: 2
       template:
         spec:
           serviceAccountName: janitor
-          restartPolicy: OnFailure
+          restartPolicy: Never
           securityContext:
             {{- include "common.podSecurityContext" . | nindent 12 }}
           containers:
