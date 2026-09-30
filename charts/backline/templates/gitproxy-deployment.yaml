@@ -27,7 +27,7 @@ spec:
       {{- include "common.podSecurityContext" . | nindent 8 }}
     {{- if include "adot.isK8sVersionGte129" .}}
       initContainers:
-        {{- include "adot.sidecar" (merge (dict "isJob" true) .)  | nindent 8 -}}
+        {{- include "adot.sidecar" (merge (dict "isJob" true "component" "gitproxy") .)  | nindent 8 -}}
     {{- end}}
       containers:
         - name: gitproxy
@@ -79,7 +79,7 @@ spec:
               readOnly: true
             {{- end }}
         {{- if not (include "adot.isK8sVersionGte129" .) }}
-        {{- include "adot.sidecar" . | nindent 8 }}
+        {{- include "adot.sidecar" (merge (dict "component" "gitproxy") .) | nindent 8 }}
         {{- end }}
       volumes:
       {{- include "adot.volumes" . | nindent 8 }}

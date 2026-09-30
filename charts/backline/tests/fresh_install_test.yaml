@@ -1,0 +1,32 @@
+suite: first install without live state
+set:
+  accessKey: test-key
+tests:
+  - it: generates a 32-character SeaweedFS secret key used by both fields
+    template: templates/seaweedfs-secret.yaml
+    asserts:
+      - matchRegex:
+          path: stringData.secretKey
+          pattern: ^[A-Za-z0-9]{32}$
+
+  - it: starts LOG_STREAM_NAME empty for the janitor to fill
+    template: templates/adapter-configmap.yaml
+    asserts:
+      - equal:
+          path: data.LOG_STREAM_NAME
+          value: ""
+
+  - it: puts config checksums on the pod template so ConfigMap changes roll pods
+    templates:
+      - templates/worker-deployment.yaml
+      - templates/gitproxy-deployment.yaml
+    asserts:
+      - exists:
+          path: spec.template.metadata.annotations["checksum/config"]
+      - exists:
+          path: spec.template.metadata.annotations["checksum/adapter-config"]
+      - exists:
+          path: spec.template.metadata.annotations["checksum/adot-config"]
+      - notExists:
+          path: metadata.annotations
+

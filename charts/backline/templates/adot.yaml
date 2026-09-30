@@ -29,6 +29,7 @@ true
 
   Parameters (passed via merge/dict):
     - isJob: whether this is a Job (affects K8s version gating and restartPolicy)
+    - component: "gitproxy" to honour its deprecated collector image override
 */ -}}
 {{- $isJob := and (hasKey . "isJob") .isJob -}}
 {{- $includeContainer := not $isJob -}}

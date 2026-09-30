@@ -1,0 +1,120 @@
+suite: deprecation notices
+templates:
+  - templates/NOTES.txt
+set:
+  accessKey: test-key
+tests:
+  - it: prints nothing with default values
+    asserts:
+      - notMatchRegexRaw:
+          pattern: DEPRECATED
+
+  - it: reports only gitproxy.enabled when the 1.5.4 defaults are replayed
+    values:
+      - values/defaults-1.5.4.yaml
+    set:
+      accessKey: test-key
+    asserts:
+      - matchRegexRaw:
+          pattern: "gitproxy.enabled is no longer read"
+      - notMatchRegexRaw:
+          pattern: "(environment|httpPort|Probe|otel|adapter|temporal|janitor|createBuckets)"
+
+  - it: reports an environment other than staging or production
+    set:
+      environment: prod
+    asserts:
+      - matchRegexRaw:
+          pattern: 'environment \("prod"\) is no longer read'
+
+  - it: stays quiet for environment staging
+    set:
+      environment: staging
+    asserts:
+      - notMatchRegexRaw:
+          pattern: DEPRECATED
+
+  - it: reports a changed service port
+    set:
+      worker.service.httpPort: 9090
+      gitproxy.service.httpPort: 9091
+    asserts:
+      - matchRegexRaw:
+          pattern: 'worker\.service\.httpPort \(9090\) is no longer read'
+      - matchRegexRaw:
+          pattern: 'gitproxy\.service\.httpPort \(9091\) is no longer read'
+
+  - it: reports a changed probe but not an unchanged one
+    set:
+      worker.livenessProbe:
+        httpGet: {path: /health, port: 8080}
+        initialDelaySeconds: 30
+        periodSeconds: 5
+      worker.readinessProbe:
+        httpGet: {path: /readiness, port: 8080}
+        initialDelaySeconds: 5
+        periodSeconds: 3
+    asserts:
+      - matchRegexRaw:
+          pattern: 'worker\.livenessProbe is no longer read'
+      - notMatchRegexRaw:
+          pattern: 'worker\.readinessProbe'
+
+  - it: reports disabled telemetry
+    set:
+      gitproxy.otel.enabled: false
+    asserts:
+      - matchRegexRaw:
+          pattern: 'gitproxy\.otel\.enabled is no longer read'
+
+  - it: reports skipCertVerification only when enabled
+    set:
+      gitproxy.adapter.skipCertVerification: true
+    asserts:
+      - matchRegexRaw:
+          pattern: 'skipCertVerification is no longer read.*customCaCert'
+
+  - it: reports GitProxy tuning that differs from the built-in defaults
+    set:
+      gitproxy.adapter.maxRetries: 5
+      gitproxy.adapter.retryDelay: 1s
+      gitproxy.temporal.maxConcurrentActivities: 10
+    asserts:
+      - matchRegexRaw:
+          pattern: 'gitproxy\.adapter\.maxRetries \(5\) is no longer read'
+      - matchRegexRaw:
+          pattern: 'gitproxy\.temporal\.maxConcurrentActivities \(10\) is no longer read'
+      - notMatchRegexRaw:
+          pattern: 'retryDelay'
+
+  - it: reports honoured image overrides as deprecated
+    set:
+      worker.otel.collector.image: mirror.example.com/aws-otel-collector:v0.45.1
+      janitor.image.name: mirror/helm-kubectl
+      janitor.image.tag: 3.17.0
+    asserts:
+      - matchRegexRaw:
+          pattern: 'worker\.otel\.collector\.image is deprecated\. Its value \(mirror\.example\.com/aws-otel-collector:v0\.45\.1\) is still used'
+      - matchRegexRaw:
+          pattern: 'janitor\.image\.name is deprecated\. Its value \(mirror/helm-kubectl\) is still used'
+      - matchRegexRaw:
+          pattern: 'janitor\.image\.tag is deprecated\. Its value \(3\.17\.0\) is still used'
+
+  - it: reports a legacy operational ttl as applied to operationalRetention
+    set:
+      seaweedfs.allInOne.s3.createBuckets:
+        - {name: operational, ttl: 30d}
+        - {name: static-assets}
+    asserts:
+      - matchRegexRaw:
+          pattern: 'operational ttl \(30d\) is applied as objectStorage\.operationalRetention'
+
+  - it: reports a legacy bucket list as unused once operationalRetention is set
+    set:
+      objectStorage.operationalRetention: 14d
+      seaweedfs.allInOne.s3.createBuckets:
+        - {name: operational, ttl: 30d}
+        - {name: static-assets}
+    asserts:
+      - matchRegexRaw:
+          pattern: 'createBuckets is deprecated: the chart sets the buckets'

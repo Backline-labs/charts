@@ -1,0 +1,8 @@
+{{- $notices := include "backline.deprecations" . | fromJsonArray }}
+{{- if $notices }}
+DEPRECATED VALUES
+These values from your configuration are deprecated. See "Upgrading to 1.6.0" in the chart README.
+{{ range $notices }}
+  - {{ . }}
+{{- end }}
+{{- end }}

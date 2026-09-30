@@ -1052,8 +1052,10 @@ helm upgrade backline \
 ### Upgrading to 1.6.0
 
 - GitProxy is always deployed. Releases that had `gitproxy.enabled: false` gain a `gitproxy` Deployment; it makes the same outbound connections as the Worker and idles without an on-prem git integration.
-- These values are no longer read and can be removed from your values file: `environment`, `gitproxy.enabled`, `worker.service.httpPort`, `gitproxy.service.httpPort`, the `livenessProbe` / `readinessProbe` and `otel` blocks of `worker` and `gitproxy`, `gitproxy.adapter.*`, `gitproxy.temporal.*`, `janitor.image.name` and `janitor.image.tag`.
+- `helm install` and `helm upgrade` print a **DEPRECATED VALUES** notice for every removed value your configuration still sets to something other than its old default. Values replayed from old defaults by `--reuse-values` stay silent, except `gitproxy.enabled`.
+- These values are no longer read; remove them from your values file: `environment`, `gitproxy.enabled`, `worker.service.httpPort`, `gitproxy.service.httpPort`, the `livenessProbe` / `readinessProbe` and `otel.enabled` of `worker` and `gitproxy`, `gitproxy.adapter.*` and `gitproxy.temporal.*`.
 - `gitproxy.adapter.skipCertVerification` is gone. If you needed it to get past a TLS-inspecting proxy, supply that proxy's CA with `customCaCert` instead.
+- These values are deprecated but still used, so installs that pull through a mirror keep working: `worker.otel.collector.image`, `gitproxy.otel.collector.image` (GitProxy falls back to the Worker's), `janitor.image.name` and `janitor.image.tag`. A future release will stop reading them.
 - Existing installs keep their current SeaweedFS secret key; only new installs without `objectStorage.secretKey` get a generated one.
 - Buckets are created by the chart's own hook, and the `operational` retention window moves to `objectStorage.operationalRetention`. A `ttl` you set on `operational` in `seaweedfs.allInOne.s3.createBuckets` is still honoured while the new value is empty; the rest of that list is no longer read.
 - The Worker and GitProxy pods now roll whenever `helm upgrade` changes a ConfigMap they read, so the first upgrade to 1.6.0 restarts both.

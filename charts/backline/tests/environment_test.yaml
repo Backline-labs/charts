@@ -1,0 +1,42 @@
+suite: environment selection
+set:
+  accessKey: test-key
+tests:
+  - it: targets production by default
+    template: templates/adapter-configmap.yaml
+    asserts:
+      - equal:
+          path: data.ADAPTER_BASE_URL
+          value: https://app.backline.ai/api/adapter/v1
+
+  - it: treats any value other than staging as production
+    templates:
+      - templates/adapter-configmap.yaml
+      - templates/worker-deployment.yaml
+    set:
+      environment: prod
+    asserts:
+      - equal:
+          path: data.ADAPTER_BASE_URL
+          value: https://app.backline.ai/api/adapter/v1
+        template: templates/adapter-configmap.yaml
+      - matchRegex:
+          path: spec.template.spec.containers[?(@.name == "worker")].image
+          pattern: '^314146328431\.dkr\.ecr\.us-east-1\.amazonaws\.com/prod-runner:'
+        template: templates/worker-deployment.yaml
+
+  - it: points every endpoint at staging for environment staging
+    templates:
+      - templates/adapter-configmap.yaml
+      - templates/worker-deployment.yaml
+    set:
+      environment: staging
+    asserts:
+      - equal:
+          path: data.ADAPTER_BASE_URL
+          value: https://staging-app.backline.ai/api/adapter/v1
+        template: templates/adapter-configmap.yaml
+      - matchRegex:
+          path: spec.template.spec.containers[?(@.name == "worker")].image
+          pattern: '^580550010989\.dkr\.ecr\.us-west-1\.amazonaws\.com/runner:'
+        template: templates/worker-deployment.yaml

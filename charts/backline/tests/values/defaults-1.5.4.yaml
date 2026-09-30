@@ -1,0 +1,275 @@
+# Chart 1.5.4 default values, replayed by --reuse-values upgrades from that release.
+# Global configuration
+accessKey: ""
+environment: "production"
+namespaceOverride: "backline"
+
+# ============================================================================
+# OUTBOUND PROXY (optional)
+# ============================================================================
+# For clusters that route egress through a corporate proxy. When set, these are
+# injected (both upper- and lower-case) into the worker, gitproxy and janitor
+# containers. Leave empty to connect directly.
+# Include your internal hosts (e.g. a self-hosted git server) and in-cluster
+# addresses in noProxy so they are reached directly, not through the proxy.
+proxy:
+  httpProxy: ""
+  httpsProxy: ""
+  noProxy: ""
+
+# ============================================================================
+# CUSTOM CA (optional)
+# ============================================================================
+# Base64-encoded PEM CA certificate(s) used for trusted communication with a
+# self-hosted git host signed by an internal/corporate CA.
+# Generate with:  base64 -w0 ca.pem   (or:  base64 < ca.pem | tr -d '\n')
+customCaCert: ""
+
+# ============================================================================
+# EXTERNAL SECRETS (optional)
+# ============================================================================
+# Source chart secrets from any secret manager the External Secrets Operator
+# supports (https://external-secrets.io): AWS, Azure, Google, Vault, ... Enabling
+# a secret below renders an ExternalSecret in place of the Secret; the operator
+# syncs the provider value into a Secret of the same name, so nothing else in
+# the chart changes. The operator and a SecretStore/ClusterSecretStore must
+# already exist. Inline values (accessKey, customCaCert, objectStorage.*) are
+# ignored for a secret that is enabled here. Enabling or disabling a secret on
+# an existing install is an ordinary helm upgrade; the Secret object is handed
+# over between Helm and the operator without being recreated.
+externalSecrets:
+  # ESO 0.17+ serves external-secrets.io/v1; older operators need v1beta1.
+  apiVersion: external-secrets.io/v1
+  # Defaults for every ExternalSecret below. Any secret may carry its own
+  # secretStoreRef / refreshInterval to override them.
+  secretStoreRef:
+    name: ""
+    kind: SecretStore # or ClusterSecretStore
+  refreshInterval: 1h
+  # remoteRef blocks are passed to ESO verbatim: key is required; property,
+  # version, decodingStrategy, ... are accepted as-is.
+
+  # Backline access key -> Secret "accesskey" (key ACCESS_KEY)
+  accessKey:
+    enabled: false
+    remoteRef:
+      key: ""
+  # Internal CA bundle -> Secret "custom-ca" (key ca.crt). The remote value
+  # must be PEM; add `decodingStrategy: Base64` if it is stored base64-encoded.
+  customCaCert:
+    enabled: false
+    remoteRef:
+      key: ""
+  # SeaweedFS S3 credentials -> Secret "seaweedfs-s3-secret". The gateway's
+  # identity config is derived from the two fetched values.
+  objectStorage:
+    enabled: false
+    accessKey:
+      remoteRef:
+        key: ""
+    secretKey:
+      remoteRef:
+        key: ""
+
+# OBJECT STORAGE (SeaweedFS, S3-compatible)
+objectStorage:
+  accessKey: "backline"
+  secretKey: "backline-seaweedfs-password"
+
+seaweedfs:
+  enabled: true
+  fullnameOverride: seaweedfs
+  master:
+    enabled: false
+  volume:
+    enabled: false
+    # all-in-one derives -volume.max from the first dataDir; pin an explicit count.
+    # Auto (0) sizes the cap by disk (~9 for a 10Gi PVC), too few once each bucket
+    # gets its own collection. Volumes grow on demand; minFreeSpacePercent guards the disk.
+    dataDirs:
+      - name: data1
+        type: hostPath
+        hostPathPrefix: /ssd
+        maxVolumes: 100
+  filer:
+    enabled: false
+    port: 8888
+    # Read by the bucket-creation hook even with the filer disabled.
+    podSecurityContext: &seaweedfsPodSecurityContext
+      enabled: true
+      # The image's own seaweed user; fsGroup lets it take over data written as root.
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+      fsGroupChangePolicy: OnRootMismatch
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext: &seaweedfsContainerSecurityContext
+      enabled: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+  s3:
+    enabled: false
+    port: 8333
+  allInOne:
+    enabled: true
+    data:
+      type: persistentVolumeClaim
+      size: 10Gi
+      storageClass: ""
+    s3:
+      enabled: true
+      enableAuth: true
+      existingConfigSecret: seaweedfs-s3-secret
+      createBuckets:
+        # ttl binds at write; objects stored without one are removed on install/upgrade
+        - name: operational
+          ttl: 7d
+        - name: static-assets
+    podSecurityContext: *seaweedfsPodSecurityContext
+    containerSecurityContext: *seaweedfsContainerSecurityContext
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+
+# Janitor component
+janitor:
+  image:
+    registry: docker.io
+    name: dtzar/helm-kubectl
+    tag: 3.16.1
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+
+# Worker component
+worker:
+  replicaCount: 1
+  image:
+    # Leave empty: the janitor keeps the image on the newest published build and
+    # helm upgrade preserves the tag it set. Set a tag only to override that.
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    httpPort: 8080
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+  readinessProbe:
+    httpGet:
+      path: /readiness
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 3
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  otel:
+    enabled: true
+    collector:
+      image: public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1
+
+# ============================================================================
+# GITPROXY COMPONENT (On-prem git server connectivity)
+# ============================================================================
+gitproxy:
+  enabled: false
+  replicaCount: 1
+  image:
+    # Leave empty: the janitor keeps the image on the newest published build and
+    # helm upgrade preserves the tag it set. Set a tag only to override that.
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    httpPort: 8080
+  adapter:
+    skipCertVerification: false
+    maxRetries: 3
+    retryDelay: "1s"
+  temporal:
+    maxConcurrentActivities: 20
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+  readinessProbe:
+    httpGet:
+      path: /readiness
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 3
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  otel:
+    enabled: true
+    collector:
+      image: public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1
+
+# ============================================================================
+# RESOURCE PROFILES FOR EPHEMERAL JOBS
+# ============================================================================
+resourceProfiles:
+  small:
+    requests:
+      cpu: "250m"
+      memory: "1Gi"
+      ephemeral-storage: "10Gi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+  medium:
+    requests:
+      cpu: "500m"
+      memory: "4Gi"
+      ephemeral-storage: "10Gi"
+    limits:
+      cpu: "2000m"
+      memory: "8Gi"
+  large:
+    requests:
+      cpu: "1000m"
+      memory: "8Gi"
+      ephemeral-storage: "10Gi"
+    limits:
+      cpu: "4000m"
+      memory: "16Gi"
+  xlarge:
+    requests:
+      cpu: "2000m"
+      memory: "16Gi"
+      ephemeral-storage: "10Gi"
+    limits:
+      cpu: "8000m"
+      memory: "32Gi"
