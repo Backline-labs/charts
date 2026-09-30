@@ -11,7 +11,7 @@ spec:
   jobTemplate:
     spec:
       # With concurrencyPolicy Forbid, a hung run would otherwise block every later run.
-      activeDeadlineSeconds: 300
+      activeDeadlineSeconds: 600
       # Never + a small backoffLimit: each retry gets a new pod, so failed attempts keep their logs.
       backoffLimit: 2
       template:
@@ -122,7 +122,7 @@ spec:
                 shift 2
                 echo "HTTP request: $method $url"
                 tmpfile=$(mktemp)
-                HTTP_STATUS=$(curl -sS --connect-timeout 10 --max-time 60 -X "$method" "$url" "$@" -o "$tmpfile" -w "%{http_code}")
+                HTTP_STATUS=$(curl -sS --connect-timeout 30 --max-time 120 -X "$method" "$url" "$@" -o "$tmpfile" -w "%{http_code}")
                 HTTP_BODY=$(cat "$tmpfile")
                 rm -f "$tmpfile"
               }

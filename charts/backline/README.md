@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.5.0
+**Chart Version:** 1.5.3
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -1100,7 +1100,7 @@ kubectl logs -n backline job/janitor-<timestamp> -c janitor
   - Invalid `accessKey`: Verify the key is correct
   - Network connectivity: Ensure the janitor can reach the resolved base URL
   - Worker/GitProxy image update failed: the other steps still run, but the Job is marked failed; the `[4/N]` / `[6/N]` log section shows why (e.g. `failed to list tags`)
-- Each HTTP call times out after 60s and each run after 5 minutes, so a hung network call can't block later runs (the CronJob never overlaps runs).
+- Each HTTP call times out after 2 minutes (30s to connect) and each run after 10 minutes, so a hung network call can't block later runs (the CronJob never overlaps runs).
 - A failed run retries up to 2 times, each in a new pod. The last failed Job's pods are kept, so their logs stay readable after the Job fails:
 
 ```bash
