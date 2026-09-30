@@ -2,14 +2,25 @@
 {{- if not (or .Values.accessKey ((.Values.externalSecrets).accessKey).enabled) }}
   {{- fail "accessKey is required. Set it in values.yaml, with --set accessKey=<value>, or source it from a secret manager with externalSecrets.accessKey.enabled=true" }}
 {{- end }}
-{{- if not .Values.environment }}
-  {{- fail "environment is required. Please set it in values.yaml or with --set environment=<value>" }}
-{{- end }}
+{{- if .Values.seaweedfs.enabled }}
+{{- $buckets := list }}
 {{- range (((.Values.seaweedfs).allInOne).s3).createBuckets }}
+{{- $buckets = append $buckets .name }}
 {{- if .ttl }}
   {{- include "backline.validateTtl" .ttl }}
 {{- end }}
 {{- end }}
+{{- range list "operational" "static-assets" }}
+{{- if not (has . $buckets) }}
+  {{- fail (printf "seaweedfs.allInOne.s3.createBuckets must keep the %q bucket; the worker depends on it. Only a bucket's ttl may be changed" .) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/* Internal: Backline's own installs pass environment=staging; anything else is production. */}}
+{{- define "backline.isStaging" -}}
+{{- if eq (toString .Values.environment) "staging" -}}true{{- end -}}
 {{- end -}}
 
 {{/* Non-empty when a custom CA is supplied, inline or through an ExternalSecret. */}}
@@ -40,15 +51,15 @@ seccompProfile:
 {{- end -}}
 
 {{- define "logging.roleArn" -}}
-{{- if eq .Values.environment "production" -}}
-arn:aws:iam::314146328431:role/OnPremOtelShipRole
-{{- else -}}
+{{- if include "backline.isStaging" . -}}
 arn:aws:iam::580550010989:role/OnPremOtelShipRole
+{{- else -}}
+arn:aws:iam::314146328431:role/OnPremOtelShipRole
 {{- end -}}
 {{- end -}}
 
 {{- define "image.registry" -}}
-{{- if eq .Values.environment "staging" -}}
+{{- if include "backline.isStaging" . -}}
 580550010989.dkr.ecr.us-west-1.amazonaws.com
 {{- else -}}
 314146328431.dkr.ecr.us-east-1.amazonaws.com
@@ -56,7 +67,7 @@ arn:aws:iam::580550010989:role/OnPremOtelShipRole
 {{- end -}}
 
 {{- define "image.namePrefix" -}}
-{{- if ne .Values.environment "staging" -}}prod-{{- end -}}
+{{- if not (include "backline.isStaging" .) -}}prod-{{- end -}}
 {{- end -}}
 
 {{/*
@@ -87,7 +98,7 @@ exists yet or there is no cluster to look at (helm template, client dry-run).
 {{- define "gitproxy.image.name" -}}{{ include "image.namePrefix" . }}gitproxy{{- end -}}
 
 {{- define "region" -}}
-{{- if eq .Values.environment "staging" -}}
+{{- if include "backline.isStaging" . -}}
 us-west-1
 {{- else -}}
 us-east-1
@@ -95,10 +106,10 @@ us-east-1
 {{- end -}}
 
 {{- define "baseUrl" -}}
-{{- if eq .Values.environment "production" -}}
-https://app.backline.ai
-{{- else -}}
+{{- if include "backline.isStaging" . -}}
 https://staging-app.backline.ai
+{{- else -}}
+https://app.backline.ai
 {{- end -}}
 {{- end -}}
 
@@ -106,10 +117,12 @@ https://staging-app.backline.ai
 {{ printf "langfuse-config" | quote }}
 {{- end -}}
 
-{{- define "janitor.totalSteps" -}}
-{{- $steps := 5 -}}
-{{- if ((.Values.gitproxy).enabled) }}{{- $steps = add $steps 1 -}}{{- end -}}
-{{- $steps -}}
+{{- define "janitor.image" -}}
+{{ .Values.janitor.image.registry }}/dtzar/helm-kubectl:3.16.1
+{{- end -}}
+
+{{- define "adot.collectorImage" -}}
+public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1
 {{- end -}}
 
 {{- define "common.containerSecurityContext" -}}

@@ -22,7 +22,7 @@ spec:
             {{- include "common.podSecurityContext" . | nindent 12 }}
           containers:
           - name: janitor
-            image: {{ $.Values.janitor.image.registry }}/{{ $.Values.janitor.image.name }}:{{ $.Values.janitor.image.tag }}
+            image: {{ include "janitor.image" $ }}
             imagePullPolicy: {{ $.Values.janitor.image.pullPolicy }}
             securityContext:
               {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" true) | nindent 14 }}
@@ -63,7 +63,7 @@ spec:
               DOCKERCONFIG_SECRET={{ include "secretname.dockerconfig" . }}
               JWT_MAX_AGE_MINUTES=3
               DOCKERCONFIG_MAX_AGE_HOURS=8
-              TOTAL_STEPS={{ include "janitor.totalSteps" . }}
+              TOTAL_STEPS=6
 
               now_epoch() {
                 date -u +%s
@@ -294,7 +294,6 @@ spec:
                 echo "Langfuse config is fresh; skipping"
               fi
 
-              {{- if ((.Values.gitproxy).enabled) }}
               echo "[6/$TOTAL_STEPS] GitProxy image updater"
               (
               NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
@@ -348,7 +347,6 @@ spec:
                 kubectl -n "$NAMESPACE" rollout restart deployment "$DEPLOYMENT_NAME"
               fi
               ) || updater_failed=1
-              {{- end }}
 
               # Updaters don't abort later steps, but a failed update must still fail the Job.
               if [ "${updater_failed:-0}" -eq 1 ]; then echo "image updater failed; see output above"; exit 1; fi

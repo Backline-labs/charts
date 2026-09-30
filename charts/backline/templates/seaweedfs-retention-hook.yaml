@@ -30,7 +30,7 @@ spec:
         {{- include "common.podSecurityContext" . | nindent 8 }}
       containers:
       - name: retention-sweep
-        image: {{ .Values.janitor.image.registry }}/{{ .Values.janitor.image.name }}:{{ .Values.janitor.image.tag }}
+        image: {{ include "janitor.image" . }}
         imagePullPolicy: {{ .Values.janitor.image.pullPolicy }}
         securityContext:
           {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 10 }}

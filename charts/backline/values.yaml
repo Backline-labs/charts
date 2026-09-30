@@ -1,6 +1,5 @@
 # Global configuration
 accessKey: ""
-environment: "production"
 namespaceOverride: "backline"
 
 # ============================================================================
@@ -73,7 +72,9 @@ externalSecrets:
 # OBJECT STORAGE (SeaweedFS, S3-compatible)
 objectStorage:
   accessKey: "backline"
-  secretKey: "backline-seaweedfs-password"
+  # Leave empty to generate a random key on first install; upgrades keep it. Set it
+  # when rendering without cluster access (helm template, Argo CD), or it changes each render.
+  secretKey: ""
 
 seaweedfs:
   enabled: true
@@ -123,6 +124,7 @@ seaweedfs:
       enabled: true
       enableAuth: true
       existingConfigSecret: seaweedfs-s3-secret
+      # The worker depends on these bucket names; only ttl may be changed.
       createBuckets:
         # ttl binds at write; objects stored without one are removed on install/upgrade
         - name: operational
@@ -141,9 +143,8 @@ seaweedfs:
 # Janitor component
 janitor:
   image:
+    # Point at a mirror of docker.io if the cluster cannot pull from it directly.
     registry: docker.io
-    name: dtzar/helm-kubectl
-    tag: 3.16.1
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -162,8 +163,6 @@ worker:
     # helm upgrade applies it, then the janitor moves on to the newest build.
     tag: ""
     pullPolicy: IfNotPresent
-  service:
-    httpPort: 8080
   resources:
     requests:
       cpu: "500m"
@@ -171,31 +170,14 @@ worker:
     limits:
       cpu: "2000m"
       memory: "2Gi"
-  livenessProbe:
-    httpGet:
-      path: /health
-      port: 8080
-    initialDelaySeconds: 10
-    periodSeconds: 5
-  readinessProbe:
-    httpGet:
-      path: /readiness
-      port: 8080
-    initialDelaySeconds: 5
-    periodSeconds: 3
   nodeSelector: {}
   tolerations: []
   affinity: {}
-  otel:
-    enabled: true
-    collector:
-      image: public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1
 
 # ============================================================================
 # GITPROXY COMPONENT (On-prem git server connectivity)
 # ============================================================================
 gitproxy:
-  enabled: false
   replicaCount: 1
   image:
     # Leave empty: the janitor keeps the image on the newest published build and
@@ -203,14 +185,6 @@ gitproxy:
     # helm upgrade applies it, then the janitor moves on to the newest build.
     tag: ""
     pullPolicy: IfNotPresent
-  service:
-    httpPort: 8080
-  adapter:
-    skipCertVerification: false
-    maxRetries: 3
-    retryDelay: "1s"
-  temporal:
-    maxConcurrentActivities: 20
   resources:
     requests:
       cpu: "250m"
@@ -218,25 +192,9 @@ gitproxy:
     limits:
       cpu: "500m"
       memory: "512Mi"
-  livenessProbe:
-    httpGet:
-      path: /health
-      port: 8080
-    initialDelaySeconds: 10
-    periodSeconds: 5
-  readinessProbe:
-    httpGet:
-      path: /readiness
-      port: 8080
-    initialDelaySeconds: 5
-    periodSeconds: 3
   nodeSelector: {}
   tolerations: []
   affinity: {}
-  otel:
-    enabled: true
-    collector:
-      image: public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1
 
 # ============================================================================
 # RESOURCE PROFILES FOR EPHEMERAL JOBS
