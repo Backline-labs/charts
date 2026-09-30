@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.5.3
+**Chart Version:** 1.5.4
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -198,7 +198,7 @@ Source the chart's static secrets from a secret manager through the External Sec
 
 ### Janitor Configuration
 
-The Janitor component runs periodic maintenance tasks as a CronJob. It also keeps the Worker and GitProxy images on the newest published build, and `helm upgrade` preserves the tag it set, so leave `worker.image.tag` and `gitproxy.image.tag` empty unless you deliberately want to override it.
+The Janitor component runs periodic maintenance tasks as a CronJob. It also keeps the Worker and GitProxy images on the newest published build, and `helm upgrade` preserves the tag it set, so leave `worker.image.tag` and `gitproxy.image.tag` empty. A tag set there is not a pin: each `helm upgrade` applies it, then the Janitor moves on to the newest build. To update an image without waiting for the Janitor, see [Janitor Job Failing](#janitor-job-failing).
 
 | Parameter                           | Description        | Default              |
 | ----------------------------------- | ------------------ | -------------------- |
@@ -219,7 +219,7 @@ The Worker is the main application component.
 | ---------------------------------- | -------------------------------------------------- | ------------------------------------------------------ |
 | `worker.replicaCount`              | Number of worker replicas                          | `1`                                                    |
 | `worker.image.name`                | Image name                                         | `prod-runner`                                          |
-| `worker.image.tag`                 | Image tag. Leave empty: the Janitor tracks the newest published build and `helm upgrade` keeps the tag it set | `""`                                                   |
+| `worker.image.tag`                 | Image tag. Leave empty: the Janitor tracks the newest published build and `helm upgrade` keeps the tag it set. A set tag is applied on each upgrade, not pinned | `""`                                                   |
 | `worker.image.pullPolicy`          | Image pull policy                                  | `IfNotPresent`                                         |
 | `worker.service.httpPort`          | HTTP service port                                  | `8080`                                                 |
 | `worker.resources.requests.cpu`    | CPU request                                        | `500m`                                                 |
@@ -250,7 +250,7 @@ GitProxy enables Backline to interact with on-prem git servers that are not acce
 | `gitproxy.enabled` | Enable GitProxy component | `false` |
 | `gitproxy.replicaCount` | Number of GitProxy replicas | `1` |
 | `gitproxy.image.name` | Image name | `prod-gitproxy` |
-| `gitproxy.image.tag` | Image tag. Leave empty: the Janitor tracks the newest published build and `helm upgrade` keeps the tag it set | `""` |
+| `gitproxy.image.tag` | Image tag. Leave empty: the Janitor tracks the newest published build and `helm upgrade` keeps the tag it set. A set tag is applied on each upgrade, not pinned | `""` |
 | `gitproxy.image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `gitproxy.adapter.skipCertVerification` | Skip TLS verification for adapter connection | `false` |
 | `gitproxy.adapter.maxRetries` | Max retries for adapter HTTP calls | `3` |
@@ -485,7 +485,7 @@ spec:
 
 The Janitor is deliberately a singleton — `concurrencyPolicy: Forbid` prevents two runs from writing the same secrets. It needs no HA configuration: the CronJob schedules a fresh Job every minute, and a lost node simply moves the next run elsewhere.
 
-What it does need is monitoring. A Janitor that fails repeatedly is silent until the secrets it maintains expire, and then image pulls and Coder Job authentication start failing. Alert on the last successful run, or on the freshness annotation the Janitor stamps on each secret:
+What it does need is monitoring. A failing Janitor has no visible effect until the secrets it maintains expire, and then image pulls and Coder Job authentication start failing. A failed Worker or GitProxy image update also fails the Job, so alerting on the last successful run catches stalled image updates too. Alert on that, or on the freshness annotation the Janitor stamps on each secret:
 
 ```bash
 kubectl get cronjob janitor -n backline -o jsonpath='{.status.lastSuccessfulTime}'
@@ -1087,13 +1087,14 @@ kubectl logs -n backline deployment/worker -c worker
 
 ### Janitor Job Failing
 
-**Symptom:** Janitor CronJob fails repeatedly.
+**Symptom:** Janitor Jobs fail repeatedly, or the Worker or GitProxy stays on an old image.
 
 **Solution:**
-- Check janitor logs:
+- Check the logs of a failed run. Each run retries up to 2 times, each in a new pod, and the last failed Job's pods are kept:
 
 ```bash
-kubectl logs -n backline job/janitor-<timestamp> -c janitor
+kubectl get pods -n backline --sort-by=.metadata.creationTimestamp | grep janitor
+kubectl logs -n backline <failed-janitor-pod>
 ```
 
 - Common issues:
@@ -1101,12 +1102,16 @@ kubectl logs -n backline job/janitor-<timestamp> -c janitor
   - Network connectivity: Ensure the janitor can reach the resolved base URL
   - Worker/GitProxy image update failed: the other steps still run, but the Job is marked failed; the `[4/N]` / `[6/N]` log section shows why (e.g. `failed to list tags`)
 - Each HTTP call times out after 2 minutes (30s to connect) and each run after 10 minutes, so a hung network call can't block later runs (the CronJob never overlaps runs).
-- A failed run retries up to 2 times, each in a new pod. The last failed Job's pods are kept, so their logs stay readable after the Job fails:
+
+**Updating an image without the Janitor:** set the newest published `<sha>-<ticks>` tag (ask Backline support for it) directly on the Deployment:
 
 ```bash
-kubectl get pods -n backline --sort-by=.metadata.creationTimestamp | grep janitor
-kubectl logs -n backline <failed-janitor-pod>
+IMAGE=$(kubectl get deploy worker -n backline -o jsonpath='{.spec.template.spec.containers[?(@.name=="worker")].image}')
+kubectl set image deployment/worker -n backline worker="${IMAGE%:*}:<sha>-<ticks>"
+# GitProxy: the same with deploy/gitproxy and container gitproxy
 ```
+
+`helm upgrade` keeps this tag as long as `worker.image.tag` / `gitproxy.image.tag` is empty. Use the newest tag: the Janitor only moves forward, so it replaces an older one on its next successful run.
 
 ### Image Pull Errors
 

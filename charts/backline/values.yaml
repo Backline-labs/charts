@@ -158,7 +158,8 @@ worker:
   replicaCount: 1
   image:
     # Leave empty: the janitor keeps the image on the newest published build and
-    # helm upgrade preserves the tag it set. Set a tag only to override that.
+    # helm upgrade preserves the tag it set. A tag set here is not a pin: each
+    # helm upgrade applies it, then the janitor moves on to the newest build.
     tag: ""
     pullPolicy: IfNotPresent
   service:
@@ -198,7 +199,8 @@ gitproxy:
   replicaCount: 1
   image:
     # Leave empty: the janitor keeps the image on the newest published build and
-    # helm upgrade preserves the tag it set. Set a tag only to override that.
+    # helm upgrade preserves the tag it set. A tag set here is not a pin: each
+    # helm upgrade applies it, then the janitor moves on to the newest build.
     tag: ""
     pullPolicy: IfNotPresent
   service:
