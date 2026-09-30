@@ -10,10 +10,14 @@ spec:
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
+      # With concurrencyPolicy Forbid, a hung run would otherwise block every later run.
+      activeDeadlineSeconds: 600
+      # Never + a small backoffLimit: each retry gets a new pod, so failed attempts keep their logs.
+      backoffLimit: 2
       template:
         spec:
           serviceAccountName: janitor
-          restartPolicy: OnFailure
+          restartPolicy: Never
           securityContext:
             {{- include "common.podSecurityContext" . | nindent 12 }}
           containers:
@@ -118,7 +122,7 @@ spec:
                 shift 2
                 echo "HTTP request: $method $url"
                 tmpfile=$(mktemp)
-                HTTP_STATUS=$(curl -sS -X "$method" "$url" "$@" -o "$tmpfile" -w "%{http_code}")
+                HTTP_STATUS=$(curl -sS --connect-timeout 30 --max-time 120 -X "$method" "$url" "$@" -o "$tmpfile" -w "%{http_code}")
                 HTTP_BODY=$(cat "$tmpfile")
                 rm -f "$tmpfile"
               }
@@ -257,7 +261,7 @@ spec:
                 echo "Restarting $DEPLOYMENT_NAME to pick up ConfigMap change"
                 kubectl -n "$NAMESPACE" rollout restart deployment "$DEPLOYMENT_NAME"
               fi
-              ) || true
+              ) || updater_failed=1
 
               echo "[5/$TOTAL_STEPS] Langfuse config sync"
               LANGFUSE_SECRET={{ include "secretname.langfuse" . }}
@@ -343,8 +347,11 @@ spec:
                 echo "Restarting $DEPLOYMENT_NAME to pick up ConfigMap change"
                 kubectl -n "$NAMESPACE" rollout restart deployment "$DEPLOYMENT_NAME"
               fi
-              ) || true
+              ) || updater_failed=1
               {{- end }}
+
+              # Updaters don't abort later steps, but a failed update must still fail the Job.
+              if [ "${updater_failed:-0}" -eq 1 ]; then echo "image updater failed; see output above"; exit 1; fi
 
               } 2>&1 | tee -a "$LOG_FILE"
           volumes:
