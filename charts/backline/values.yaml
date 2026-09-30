@@ -72,6 +72,9 @@ externalSecrets:
 # OBJECT STORAGE (SeaweedFS, S3-compatible)
 objectStorage:
   accessKey: "backline"
+  # How long objects in the operational bucket are kept (empty = 7d). The window binds
+  # at write time; objects stored without one are removed on install/upgrade.
+  operationalRetention: ""
   # Leave empty to generate a random key on first install; upgrades keep it. Set it
   # when rendering without cluster access (helm template, Argo CD), or it changes each render.
   secretKey: ""
@@ -124,12 +127,8 @@ seaweedfs:
       enabled: true
       enableAuth: true
       existingConfigSecret: seaweedfs-s3-secret
-      # The worker depends on these bucket names; only ttl may be changed.
-      createBuckets:
-        # ttl binds at write; objects stored without one are removed on install/upgrade
-        - name: operational
-          ttl: 7d
-        - name: static-assets
+      # Buckets come from files/buckets.json via the chart's own hook; keep this empty.
+      createBuckets: []
     podSecurityContext: *seaweedfsPodSecurityContext
     containerSecurityContext: *seaweedfsContainerSecurityContext
     resources:

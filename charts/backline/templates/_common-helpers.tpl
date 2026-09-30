@@ -3,19 +3,28 @@
   {{- fail "accessKey is required. Set it in values.yaml, with --set accessKey=<value>, or source it from a secret manager with externalSecrets.accessKey.enabled=true" }}
 {{- end }}
 {{- if .Values.seaweedfs.enabled }}
-{{- $buckets := list }}
-{{- range (((.Values.seaweedfs).allInOne).s3).createBuckets }}
-{{- $buckets = append $buckets .name }}
+{{- range include "backline.buckets" . | fromJson }}
 {{- if .ttl }}
   {{- include "backline.validateTtl" .ttl }}
 {{- end }}
 {{- end }}
-{{- range list "operational" "static-assets" }}
-{{- if not (has . $buckets) }}
-  {{- fail (printf "seaweedfs.allInOne.s3.createBuckets must keep the %q bucket; the worker depends on it. Only a bucket's ttl may be changed" .) }}
 {{- end }}
-{{- end }}
-{{- end }}
+{{- end -}}
+
+{{/*
+Buckets from files/buckets.json as JSON. objectStorage.operationalRetention overrides the
+operational ttl; before 1.6.0 it was set in seaweedfs.allInOne.s3.createBuckets, still honoured.
+*/}}
+{{- define "backline.buckets" -}}
+{{- $buckets := .Files.Get "files/buckets.json" | fromJson -}}
+{{- $ttl := (.Values.objectStorage).operationalRetention -}}
+{{- if not $ttl -}}
+{{- range (((.Values.seaweedfs).allInOne).s3).createBuckets -}}
+{{- if and (eq .name "operational") .ttl -}}{{- $ttl = .ttl -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if $ttl -}}{{- $_ := set $buckets.operational "ttl" (toString $ttl) -}}{{- end -}}
+{{- toJson $buckets -}}
 {{- end -}}
 
 {{/* Internal: Backline's own installs pass environment=staging; anything else is production. */}}

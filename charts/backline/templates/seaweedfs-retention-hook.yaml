@@ -1,7 +1,7 @@
 {{- $ttlBuckets := list }}
-{{- range (((.Values.seaweedfs).allInOne).s3).createBuckets }}
-{{- if .ttl }}
-{{- $ttlBuckets = append $ttlBuckets . }}
+{{- range $name, $bucket := include "backline.buckets" . | fromJson }}
+{{- if $bucket.ttl }}
+{{- $ttlBuckets = append $ttlBuckets (dict "name" $name "ttl" $bucket.ttl) }}
 {{- end }}
 {{- end }}
 {{- if and .Values.seaweedfs.enabled $ttlBuckets }}

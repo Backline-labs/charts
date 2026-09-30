@@ -5,9 +5,6 @@ metadata:
   namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
   labels:
     app: worker
-  annotations:
-    checksum/config: {{(include (print $.Template.BasePath "/worker-configmap.yaml") . | sha256sum) | quote }}
-    checksum/adapter-config: {{(include (print $.Template.BasePath "/adapter-configmap.yaml") . | sha256sum) | quote }}
 spec:
   replicas: {{ .Values.worker.replicaCount }}
   selector:
@@ -17,6 +14,11 @@ spec:
     metadata:
       labels:
         app: worker
+      # On the pod template so a ConfigMap change rolls the pods; they read it only at start.
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/worker-configmap.yaml") . | sha256sum | quote }}
+        checksum/adapter-config: {{ include (print $.Template.BasePath "/adapter-configmap.yaml") . | sha256sum | quote }}
+        checksum/adot-config: {{ include (print $.Template.BasePath "/adot-configmap.yaml") . | sha256sum | quote }}
     spec:
       serviceAccountName: worker
       imagePullSecrets:

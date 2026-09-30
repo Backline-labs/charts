@@ -50,10 +50,10 @@ graph TB
     - [External Secrets Configuration](#external-secrets-configuration)
     - [Janitor Configuration](#janitor-configuration)
     - [Worker Configuration](#worker-configuration)
-      - [Worker OpenTelemetry Configuration](#worker-opentelemetry-configuration)
     - [GitProxy Configuration](#gitproxy-configuration)
     - [SeaweedFS Configuration](#seaweedfs-configuration)
       - [Object Retention](#object-retention)
+      - [External S3 Storage](#external-s3-storage)
     - [Pod Security](#pod-security)
     - [Resource Profiles](#resource-profiles)
   - [High Availability Recommendations](#high-availability-recommendations)
@@ -90,6 +90,12 @@ graph TB
     - [Minimal Installation](#minimal-installation)
     - [Advanced Configuration](#advanced-configuration)
   - [Upgrading](#upgrading)
+    - [Upgrading to 1.6.0](#upgrading-to-160)
+    - [Migrating from MinIO to SeaweedFS](#migrating-from-minio-to-seaweedfs)
+  - [GitOps Deployments](#gitops-deployments)
+    - [Flux](#flux)
+    - [Argo CD](#argo-cd)
+    - [helm template](#helm-template)
   - [Uninstall](#uninstall)
   - [Troubleshooting](#troubleshooting)
     - [Worker Pod Not Starting](#worker-pod-not-starting)
@@ -116,7 +122,7 @@ The chart deploys the following components:
 - **GitProxy**: Enables Backline to work with on-prem git servers (e.g., Bitbucket Data Center) by proxying git API operations. Runs on the customer network and makes outbound-only connections to Backline cloud. Always deployed; it stays idle until an on-prem git integration is connected
 - **Janitor**: CronJob that performs automated maintenance tasks including JWT token refresh, Docker registry authentication updates, and worker/gitproxy image updates
 - **ADOT Collector**: Sidecar container for exporting logs, traces, and metrics to Backline AI cloud infrastructure
-- **SeaweedFS**: Object storage for static assets and operational data (deployed as a subchart)
+- **SeaweedFS**: Object storage for static assets and operational data (deployed as a subchart). Can be replaced by your own S3; see [External S3 Storage](#external-s3-storage)
 - **Coder Jobs**: Dynamically created Kubernetes Jobs for code execution (template embedded in worker ConfigMap)
 - **Dependabot Upgrader Jobs**: Dynamically created Kubernetes Jobs for dependency updates (template embedded in worker ConfigMap)
 
@@ -221,8 +227,8 @@ The Worker is the main application component.
 | `worker.resources.requests.memory` | Memory request                                     | `1Gi`                                                  |
 | `worker.resources.limits.cpu`      | CPU limit                                          | `2000m`                                                |
 | `worker.resources.limits.memory`   | Memory limit                                       | `2Gi`                                                  |
-| `worker.env`                       | Additional environment variables, e.g. the S3 settings when `seaweedfs.enabled` is `false` | `[]`                                                   |
-| `worker.envFromSecrets`            | Secrets to inject as environment variables, e.g. external S3 credentials | `[]`                                                   |
+| `worker.env`                       | Additional environment variables, e.g. the settings for [External S3 Storage](#external-s3-storage) | `[]`                                                   |
+| `worker.envFromSecrets`            | Secrets whose keys become environment variables, as a list of `{ref: <secret name>}`, e.g. external S3 credentials | `[]`                                                   |
 | `worker.nodeSelector`              | Node selector for pod assignment                   | `{}`                                                   |
 | `worker.tolerations`               | Tolerations for pod assignment                     | `[]`                                                   |
 | `worker.affinity`                  | Affinity rules for pod assignment                  | `{}`                                                   |
@@ -266,8 +272,9 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 | Parameter                                     | Description                                                                 | Default                         |
 | --------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------- |
 | `objectStorage.accessKey`                     | S3 access key (worker + SeaweedFS gateway)                                  | `backline`                      |
-| `objectStorage.secretKey`                     | S3 secret key (worker + SeaweedFS gateway). Empty generates a random key on first install that upgrades keep; set it when rendering without cluster access (`helm template`, Argo CD) | `""` (generated)                |
-| `seaweedfs.enabled`                           | Enable the bundled store (`false` → use external S3)                        | `true`                          |
+| `objectStorage.secretKey`                     | S3 secret key (worker + SeaweedFS gateway). Empty generates a random key on first install that upgrades keep; set it for Argo CD and `helm template` (see [GitOps Deployments](#gitops-deployments)) | `""` (generated)                |
+| `objectStorage.operationalRetention`          | How long objects in the `operational` bucket are kept; see [Object Retention](#object-retention) | `""` (`7d`)                     |
+| `seaweedfs.enabled`                           | Enable the bundled store (`false` → use your own S3, see [External S3 Storage](#external-s3-storage)) | `true`                          |
 | `seaweedfs.fullnameOverride`                  | Name prefix for SeaweedFS resources (used to build its service DNS)         | `seaweedfs`                     |
 | `seaweedfs.master.enabled`                    | Run a standalone master (the all-in-one pod provides one)                   | `false`                         |
 | `seaweedfs.volume.enabled`                    | Run standalone volume servers (the all-in-one pod provides one)             | `false`                         |
@@ -286,7 +293,6 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 | `seaweedfs.allInOne.s3.enabled`               | Expose the S3 gateway on the all-in-one pod                                 | `true`                          |
 | `seaweedfs.allInOne.s3.enableAuth`            | Require the `objectStorage` credentials on S3 requests                      | `true`                          |
 | `seaweedfs.allInOne.s3.existingConfigSecret`  | Secret holding the S3 identities (`seaweedfs_s3_config`)                    | `seaweedfs-s3-secret`           |
-| `seaweedfs.allInOne.s3.createBuckets[].ttl`   | Retention window for a bucket (e.g. `7d`); see [Object Retention](#object-retention). The bucket names are fixed | `7d` on `operational`           |
 | `seaweedfs.allInOne.resources`                | All-in-one pod resource requests/limits                                     | `100m`/`256Mi` … `500m`/`512Mi` |
 | `seaweedfs.allInOne.podSecurityContext`       | All-in-one pod security context (see [Pod Security](#pod-security))         | UID/GID/fsGroup `1000`          |
 | `seaweedfs.filer.podSecurityContext`          | Bucket-creation hook pod security context (read even with the filer off)    | UID/GID/fsGroup `1000`          |
@@ -296,18 +302,17 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 Objects written to the `operational` bucket are deleted 7 days later. `static-assets` has
 no expiry.
 
-To change the window, set `ttl` on the bucket. Keep both buckets in the list: the worker depends on their names, so the chart rejects a list that drops either. The `ttl` is a count of 1-255 followed by `m`, `h`,
-`d`, `w`, `M` (month) or `y`, so a year is written `1y` and not `365d`:
+To change the window, set `objectStorage.operationalRetention` to a count of 1-255 followed by
+`m`, `h`, `d`, `w`, `M` (month) or `y`, so a year is written `1y` and not `365d`:
 
 ```yaml
-seaweedfs:
-  allInOne:
-    s3:
-      createBuckets:
-        - name: operational
-          ttl: 30d
-        - name: static-assets
+objectStorage:
+  operationalRetention: 30d
 ```
+
+The bucket names are fixed by the chart. Before 1.6.0 the window was set with `ttl` in
+`seaweedfs.allInOne.s3.createBuckets`; a `ttl` set there on `operational` is still honoured
+while `operationalRetention` is empty.
 
 The new window applies to objects written after the next `helm upgrade`; objects already
 stored keep the expiry they were given when they were written.
@@ -325,7 +330,61 @@ kubectl exec -n backline deploy/seaweedfs-all-in-one -- \
   sh -c "echo 's3.bucket.create -name operational' | weed shell"
 ```
 
-The `ttl` still applies to the re-created bucket.
+The retention window still applies to the re-created bucket.
+
+#### External S3 Storage
+
+Set `seaweedfs.enabled: false` to use AWS S3 or another S3-compatible store instead of the
+bundled SeaweedFS. The chart then deploys no object store and gives the Worker no storage
+settings, so supply them with `worker.env` and `worker.envFromSecrets`:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `AWS_REGION` | Region of the buckets. Required | unset |
+| `AWS_OPERATIONAL_BUCKET` | Bucket for job state and results | `operational` |
+| `AWS_STATIC_ASSETS_BUCKET` | Bucket for static assets | `static-assets` |
+| `AWS_DEV_ENDPOINT` | Endpoint of an S3-compatible store (MinIO, Ceph, ...), addressed path-style. Leave unset for AWS S3 | unset |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Static credentials, from a Secret referenced in `worker.envFromSecrets` | unset |
+
+Credentials are resolved by the standard AWS SDK chain, so on EKS you can skip the static
+keys and grant the `worker` service account access with an EKS Pod Identity association.
+
+```yaml
+seaweedfs:
+  enabled: false
+
+worker:
+  env:
+    - name: AWS_REGION
+      value: us-east-1
+    - name: AWS_OPERATIONAL_BUCKET
+      value: acme-backline-operational
+    - name: AWS_STATIC_ASSETS_BUCKET
+      value: acme-backline-static-assets
+    # S3-compatible store only:
+    # - name: AWS_DEV_ENDPOINT
+    #   value: https://s3.internal.example.com
+  envFromSecrets:
+    - ref: backline-s3-credentials
+```
+
+```bash
+kubectl create secret generic backline-s3-credentials -n backline \
+  --from-literal=AWS_ACCESS_KEY_ID='<access key>' \
+  --from-literal=AWS_SECRET_ACCESS_KEY='<secret key>'
+```
+
+Before switching over:
+
+- Create both buckets. The chart does not create them on an external store.
+- Grant `s3:GetObject`, `s3:PutObject` and `s3:DeleteObject` on `arn:aws:s3:::<bucket>/*`, and
+  `s3:ListBucket` on each bucket so a missing object reads as 404 rather than 403.
+- Add a lifecycle rule that expires objects in the operational bucket, 7 days to match the
+  bundled store. `objectStorage.operationalRetention` applies only to SeaweedFS.
+- Coder and Upgrader Jobs read and write through presigned URLs the Worker issues, so their
+  pods must reach the endpoint too.
+- An endpoint whose certificate is signed by an internal CA is trusted once that CA is in
+  `customCaCert`.
 
 ### Pod Security
 
@@ -996,6 +1055,8 @@ helm upgrade backline \
 - These values are no longer read and can be removed from your values file: `environment`, `gitproxy.enabled`, `worker.service.httpPort`, `gitproxy.service.httpPort`, the `livenessProbe` / `readinessProbe` and `otel` blocks of `worker` and `gitproxy`, `gitproxy.adapter.*`, `gitproxy.temporal.*`, `janitor.image.name` and `janitor.image.tag`.
 - `gitproxy.adapter.skipCertVerification` is gone. If you needed it to get past a TLS-inspecting proxy, supply that proxy's CA with `customCaCert` instead.
 - Existing installs keep their current SeaweedFS secret key; only new installs without `objectStorage.secretKey` get a generated one.
+- Buckets are created by the chart's own hook, and the `operational` retention window moves to `objectStorage.operationalRetention`. A `ttl` you set on `operational` in `seaweedfs.allInOne.s3.createBuckets` is still honoured while the new value is empty; the rest of that list is no longer read.
+- The Worker and GitProxy pods now roll whenever `helm upgrade` changes a ConfigMap they read, so the first upgrade to 1.6.0 restarts both.
 
 ### Migrating from MinIO to SeaweedFS
 
@@ -1018,6 +1079,91 @@ kubectl -n backline delete pvc minio --ignore-not-found
 ```
 
 > **Stuck `Terminating` PV?** If the MinIO PV won't delete, the CSI provisioner that created it is likely no longer installed (e.g. the cluster switched its default StorageClass / EBS CSI driver), so the backing disk isn't reclaimed automatically. Find the disk via the PV's `.spec.csi.volumeHandle`, delete it at the cloud provider (e.g. `aws ec2 delete-volume --volume-id <id>`), then clear the finalizers: `kubectl patch pv <pv> -p '{"metadata":{"finalizers":null}}' --type=merge`.
+
+## GitOps Deployments
+
+The chart is built for Helm running against the cluster, and three of its mechanisms depend on that:
+
+- **Live state at render time.** `lookup` keeps what the Janitor or an earlier install set: the Worker and GitProxy image tags, `LOG_STREAM_NAME` in the `adapter-config` ConfigMap, the generated `objectStorage.secretKey`, and the `langfuse-config` Secret, which is rendered only while it does not exist.
+- **Janitor writes to chart objects.** It moves the `worker` and `gitproxy` container images, sets `LOG_STREAM_NAME`, and fills `langfuse-config`.
+- **Hooks.** Post-install and post-upgrade Jobs create the buckets and sweep retention.
+
+A tool that renders without cluster access sees none of the live values, and a tool that corrects drift undoes the Janitor's changes. Configure your tool as below.
+
+### Flux
+
+Flux's helm-controller runs Helm install and upgrade inside the cluster, so `lookup` and hooks work as they do with the Helm CLI. Leave drift detection off, which is the default. If you enable it, ignore the fields the Janitor owns:
+
+```yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+spec:
+  driftDetection:
+    mode: enabled
+    ignore:
+      - paths: ["/spec/template/spec/containers/0/image"]
+        target:
+          kind: Deployment
+          name: worker
+      - paths: ["/spec/template/spec/containers/0/image"]
+        target:
+          kind: Deployment
+          name: gitproxy
+      - paths: ["/data/LOG_STREAM_NAME"]
+        target:
+          kind: ConfigMap
+          name: adapter-config
+```
+
+### Argo CD
+
+Argo CD renders charts with `helm template`, so `lookup` returns nothing:
+
+- Set `objectStorage.secretKey` (or source it with `externalSecrets.objectStorage`). Left empty, every render generates a new key.
+- Every render carries the bootstrap image tag, an empty `LOG_STREAM_NAME` and placeholder `langfuse-config` values. Ignore those fields, and have syncs respect that, so a sync does not undo the Janitor:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: worker
+      jqPathExpressions:
+        - .spec.template.spec.containers[] | select(.name == "worker").image
+    - group: apps
+      kind: Deployment
+      name: gitproxy
+      jqPathExpressions:
+        - .spec.template.spec.containers[] | select(.name == "gitproxy").image
+    - kind: ConfigMap
+      name: adapter-config
+      jsonPointers:
+        - /data/LOG_STREAM_NAME
+    - kind: Secret
+      name: langfuse-config
+      jsonPointers:
+        - /data
+    # The SeaweedFS subchart regenerates this on every render; SFTP is disabled.
+    - kind: Secret
+      name: seaweedfs-sftp-secret
+      jsonPointers:
+        - /data
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
+```
+
+Argo CD runs the chart's post-install and post-upgrade hooks as PostSync hooks, so the bucket and retention Jobs run after every sync. Both are idempotent.
+
+### helm template
+
+Applying `helm template` output with `kubectl apply` has the Argo CD gaps and more: each apply resets the Janitor's fields, and hooks come out as plain Jobs, which a later apply cannot change because a Job's template is immutable. Prefer the Helm CLI, Flux or Argo CD. If you must render manifests yourself, render against the target cluster so `lookup` sees live state (Helm 3.13+), and set `objectStorage.secretKey`:
+
+```bash
+helm template backline backline-ai/backline -n backline -f values.yaml --dry-run=server > backline.yaml
+```
 
 ## Uninstall
 
