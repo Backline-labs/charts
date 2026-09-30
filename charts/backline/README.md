@@ -1099,6 +1099,8 @@ kubectl logs -n backline job/janitor-<timestamp> -c janitor
 - Common issues:
   - Invalid `accessKey`: Verify the key is correct
   - Network connectivity: Ensure the janitor can reach the resolved base URL
+  - Worker/GitProxy image update failed: the other steps still run, but the Job is marked failed; the `[4/N]` / `[6/N]` log section shows why (e.g. `failed to list tags`)
+- Each HTTP call times out after 60s and each run after 5 minutes, so a hung network call can't block later runs (the CronJob never overlaps runs).
 
 ### Image Pull Errors
 
