@@ -204,6 +204,7 @@ resourceProfiles:
     requests:
       cpu: "250m"
       memory: "1Gi"
+      ephemeral-storage: "10Gi"
     limits:
       cpu: "1000m"
       memory: "2Gi"
@@ -211,6 +212,7 @@ resourceProfiles:
     requests:
       cpu: "500m"
       memory: "4Gi"
+      ephemeral-storage: "10Gi"
     limits:
       cpu: "2000m"
       memory: "8Gi"
@@ -218,6 +220,7 @@ resourceProfiles:
     requests:
       cpu: "1000m"
       memory: "8Gi"
+      ephemeral-storage: "10Gi"
     limits:
       cpu: "4000m"
       memory: "16Gi"
@@ -225,6 +228,7 @@ resourceProfiles:
     requests:
       cpu: "2000m"
       memory: "16Gi"
+      ephemeral-storage: "10Gi"
     limits:
       cpu: "8000m"
       memory: "32Gi"

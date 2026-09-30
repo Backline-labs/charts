@@ -343,14 +343,14 @@ is not permitted under `restricted`.
 
 ### Resource Profiles
 
-Resource profiles define CPU and memory allocations for ephemeral jobs (Coder and Dependabot Upgrader).
+Resource profiles define CPU, memory, and ephemeral-storage allocations for ephemeral jobs (Coder and Dependabot Upgrader).
 
-| Profile   | CPU Request | CPU Limit | Memory Request | Memory Limit |
-| --------- | ----------- | --------- | -------------- | ------------ |
-| `small`   | 250m        | 1000m     | 1Gi            | 2Gi          |
-| `medium`  | 500m        | 2000m     | 4Gi            | 8Gi          |
-| `large`   | 1000m       | 4000m     | 8Gi            | 16Gi         |
-| `xlarge`  | 2000m       | 8000m     | 16Gi           | 32Gi         |
+| Profile   | CPU Request | CPU Limit | Memory Request | Memory Limit | Ephemeral Storage Request |
+| --------- | ----------- | --------- | -------------- | ------------ | ------------------------- |
+| `small`   | 250m        | 1000m     | 1Gi            | 2Gi          | 10Gi                      |
+| `medium`  | 500m        | 2000m     | 4Gi            | 8Gi          | 10Gi                      |
+| `large`   | 1000m       | 4000m     | 8Gi            | 16Gi         | 10Gi                      |
+| `xlarge`  | 2000m       | 8000m     | 16Gi           | 32Gi         | 10Gi                      |
 
 You can customize these profiles in your values file:
 
@@ -360,6 +360,7 @@ resourceProfiles:
     requests:
       cpu: "250m"
       memory: "1Gi"
+      ephemeral-storage: "10Gi"
     limits:
       cpu: "1000m"
       memory: "2Gi"
