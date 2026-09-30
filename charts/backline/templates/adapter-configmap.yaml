@@ -10,4 +10,6 @@ data:
   OTEL_EXPORTER_OTLP_HOST: "localhost"
   OTEL_EXPORTER_OTLP_PORT: "4317"
   LOG_FILE_ENABLED: "true"
-  LOG_STREAM_NAME: "" # Set by janitor
+  # Set by the janitor; keep its value so helm upgrade doesn't blank it under running pods.
+  {{- $live := lookup "v1" "ConfigMap" (default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-") "adapter-config" }}
+  LOG_STREAM_NAME: {{ (($live).data).LOG_STREAM_NAME | default "" | quote }}

@@ -203,10 +203,11 @@ spec:
               if [ "$CURRENT" != "$DCT" ]; then
                 echo "Updating adapter-config ConfigMap LOG_STREAM_NAME to $DCT"
                 echo "$CM_JSON" | jq --arg v "$DCT" '.data.LOG_STREAM_NAME = $v' | kubectl apply -f -
-                cm_changed=1
+                # Pods read it only at start; restart here, since the image updaters may find nothing to do.
+                echo "Restarting worker and gitproxy to pick up the ConfigMap change"
+                kubectl -n "$NAMESPACE" rollout restart deployment worker gitproxy
               else
                 echo "LOG_STREAM_NAME already up-to-date ($CURRENT)"
-                cm_changed=0
               fi
 
               echo "[4/$TOTAL_STEPS] Worker image updater"
@@ -239,8 +240,8 @@ spec:
               NEW_TAG=$(echo "$TAGS_JSON" | jq -r '[.tags[] | select(test("-[0-9]+$")) | {tag: ., ticks: (capture("(?<ticks>[0-9]+)$").ticks | tonumber)}] | if length==0 then "" else (max_by(.ticks).tag) end')
               if [ -z "$NEW_TAG" ]; then echo "no tags with ticks suffix found"; exit 0; fi
 
-              if [ "$NEW_TAG" = "$CURRENT_TAG" ] && [ "${cm_changed:-0}" -eq 0 ]; then
-                echo "worker image already at latest tag: $CURRENT_TAG and no config change"; exit 0;
+              if [ "$NEW_TAG" = "$CURRENT_TAG" ]; then
+                echo "worker image already at latest tag: $CURRENT_TAG"; exit 0;
               fi
 
               CURRENT_TICKS=${CURRENT_TAG##*-}
@@ -252,15 +253,8 @@ spec:
               fi
 
               NEW_IMAGE="$REGISTRY/$REPOSITORY:$NEW_TAG"
-              if [ "$NEW_TAG" != "$CURRENT_TAG" ]; then
-                echo "Updating $DEPLOYMENT_NAME container $CONTAINER_NAME to $NEW_IMAGE"
-                kubectl -n "$NAMESPACE" set image deployment/$DEPLOYMENT_NAME $CONTAINER_NAME="$NEW_IMAGE"
-                cm_changed=1
-              fi
-              if [ "${cm_changed:-0}" -eq 1 ]; then
-                echo "Restarting $DEPLOYMENT_NAME to pick up ConfigMap change"
-                kubectl -n "$NAMESPACE" rollout restart deployment "$DEPLOYMENT_NAME"
-              fi
+              echo "Updating $DEPLOYMENT_NAME container $CONTAINER_NAME to $NEW_IMAGE"
+              kubectl -n "$NAMESPACE" set image deployment/$DEPLOYMENT_NAME $CONTAINER_NAME="$NEW_IMAGE"
               ) || updater_failed=1
 
               echo "[5/$TOTAL_STEPS] Langfuse config sync"
@@ -324,8 +318,8 @@ spec:
               NEW_TAG=$(echo "$TAGS_JSON" | jq -r '[.tags[] | select(test("-[0-9]+$")) | {tag: ., ticks: (capture("(?<ticks>[0-9]+)$").ticks | tonumber)}] | if length==0 then "" else (max_by(.ticks).tag) end')
               if [ -z "$NEW_TAG" ]; then echo "no tags with ticks suffix found"; exit 0; fi
 
-              if [ "$NEW_TAG" = "$CURRENT_TAG" ] && [ "${cm_changed:-0}" -eq 0 ]; then
-                echo "gitproxy image already at latest tag: $CURRENT_TAG and no config change"; exit 0;
+              if [ "$NEW_TAG" = "$CURRENT_TAG" ]; then
+                echo "gitproxy image already at latest tag: $CURRENT_TAG"; exit 0;
               fi
 
               CURRENT_TICKS=${CURRENT_TAG##*-}
@@ -337,15 +331,8 @@ spec:
               fi
 
               NEW_IMAGE="$REGISTRY/$REPOSITORY:$NEW_TAG"
-              if [ "$NEW_TAG" != "$CURRENT_TAG" ]; then
-                echo "Updating $DEPLOYMENT_NAME container $CONTAINER_NAME to $NEW_IMAGE"
-                kubectl -n "$NAMESPACE" set image deployment/$DEPLOYMENT_NAME $CONTAINER_NAME="$NEW_IMAGE"
-                cm_changed=1
-              fi
-              if [ "${cm_changed:-0}" -eq 1 ]; then
-                echo "Restarting $DEPLOYMENT_NAME to pick up ConfigMap change"
-                kubectl -n "$NAMESPACE" rollout restart deployment "$DEPLOYMENT_NAME"
-              fi
+              echo "Updating $DEPLOYMENT_NAME container $CONTAINER_NAME to $NEW_IMAGE"
+              kubectl -n "$NAMESPACE" set image deployment/$DEPLOYMENT_NAME $CONTAINER_NAME="$NEW_IMAGE"
               ) || updater_failed=1
 
               # Updaters don't abort later steps, but a failed update must still fail the Job.
