@@ -1,10 +1,8 @@
 name: Test Charts
 
 on:
+  # No paths filter: `test` is a required check, so it must report on every pull request.
   pull_request:
-    paths:
-      - 'charts/**'
-      - '.github/workflows/chart-test.yaml'
   workflow_dispatch:
 
 jobs:
@@ -13,22 +11,63 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Changing this workflow, or a manual run, tests every chart.
+      - name: Find changed charts
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ] || ! git diff --quiet "$BASE_SHA"...HEAD -- .github/workflows/chart-test.yaml; then
+            dirs=$(dirname charts/*/Chart.yaml)
+          else
+            dirs=$(git diff --name-only "$BASE_SHA"...HEAD -- charts/ | cut -d/ -f1,2 | sort -u)
+          fi
+          charts=$(for dir in $dirs; do if [ -f "$dir/Chart.yaml" ]; then echo "$dir"; fi; done | xargs)
+          echo "Charts to test: ${charts:-none}"
+          echo "charts=$charts" >> "$GITHUB_OUTPUT"
 
       - name: Install Helm
+        if: steps.changes.outputs.charts != ''
         uses: azure/setup-helm@v5
         with:
           version: v3.19.0
 
       - name: Build chart dependencies
+        if: steps.changes.outputs.charts != ''
+        env:
+          CHARTS: ${{ steps.changes.outputs.charts }}
         run: |
-          helm repo add seaweedfs https://seaweedfs.github.io/seaweedfs/helm
-          helm dependency build charts/backline
+          for chart in $CHARTS; do
+            for repo in $(yq '(.dependencies // [])[].repository' "$chart/Chart.yaml" | grep -E '^https?://' | sort -u); do
+              helm repo add --force-update "$(printf '%s' "$repo" | sha1sum | cut -c1-12)" "$repo"
+            done
+            helm dependency build "$chart"
+          done
 
+      # Charts that need values to render keep them in tests/values/lint.yaml.
       - name: Lint
-        run: helm lint charts/backline --set accessKey=test
+        if: steps.changes.outputs.charts != ''
+        env:
+          CHARTS: ${{ steps.changes.outputs.charts }}
+        run: |
+          for chart in $CHARTS; do
+            values=()
+            if [ -f "$chart/tests/values/lint.yaml" ]; then values=(-f "$chart/tests/values/lint.yaml"); fi
+            helm lint "$chart" "${values[@]}"
+          done
 
       - name: Install helm-unittest
+        if: steps.changes.outputs.charts != ''
         run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v1.1.2
 
       - name: Unit tests
-        run: helm unittest charts/backline --with-subchart=false
+        if: steps.changes.outputs.charts != ''
+        env:
+          CHARTS: ${{ steps.changes.outputs.charts }}
+        run: |
+          for chart in $CHARTS; do
+            if [ -d "$chart/tests" ]; then helm unittest "$chart" --with-subchart=false; fi
+          done
