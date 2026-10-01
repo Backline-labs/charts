@@ -63,7 +63,7 @@ spec:
               DOCKERCONFIG_SECRET={{ include "secretname.dockerconfig" . }}
               JWT_MAX_AGE_MINUTES=3
               DOCKERCONFIG_MAX_AGE_HOURS=8
-              TOTAL_STEPS=6
+              TOTAL_STEPS={{ if .Values.gitproxy.enabled }}6{{ else }}5{{ end }}
 
               now_epoch() {
                 date -u +%s
@@ -204,8 +204,8 @@ spec:
                 echo "Updating adapter-config ConfigMap LOG_STREAM_NAME to $DCT"
                 echo "$CM_JSON" | jq --arg v "$DCT" '.data.LOG_STREAM_NAME = $v' | kubectl apply -f -
                 # Pods read it only at start; restart here, since the image updaters may find nothing to do.
-                echo "Restarting worker and gitproxy to pick up the ConfigMap change"
-                kubectl -n "$NAMESPACE" rollout restart deployment worker gitproxy
+                echo "Restarting {{ include "janitor.restartDeployments" . }} to pick up the ConfigMap change"
+                kubectl -n "$NAMESPACE" rollout restart deployment {{ include "janitor.restartDeployments" . }}
               else
                 echo "LOG_STREAM_NAME already up-to-date ($CURRENT)"
               fi
@@ -288,6 +288,8 @@ spec:
                 echo "Langfuse config is fresh; skipping"
               fi
 
+              {{- if .Values.gitproxy.enabled }}
+
               echo "[6/$TOTAL_STEPS] GitProxy image updater"
               (
               NAMESPACE={{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
@@ -334,6 +336,7 @@ spec:
               echo "Updating $DEPLOYMENT_NAME container $CONTAINER_NAME to $NEW_IMAGE"
               kubectl -n "$NAMESPACE" set image deployment/$DEPLOYMENT_NAME $CONTAINER_NAME="$NEW_IMAGE"
               ) || updater_failed=1
+              {{- end }}
 
               # Updaters don't abort later steps, but a failed update must still fail the Job.
               if [ "${updater_failed:-0}" -eq 1 ]; then echo "image updater failed; see output above"; exit 1; fi

@@ -9,16 +9,21 @@ tests:
       - notMatchRegexRaw:
           pattern: DEPRECATED
 
-  - it: reports only gitproxy.enabled when the 1.5.4 defaults are replayed
+  - it: prints nothing when the 1.5.4 defaults are replayed
     values:
       - values/defaults-1.5.4.yaml
     set:
       accessKey: test-key
     asserts:
-      - matchRegexRaw:
-          pattern: "gitproxy.enabled is no longer read"
       - notMatchRegexRaw:
-          pattern: "(environment|httpPort|Probe|otel|adapter|temporal|janitor|createBuckets)"
+          pattern: DEPRECATED
+
+  - it: does not report gitproxy.enabled, which is still a setting
+    set:
+      gitproxy.enabled: false
+    asserts:
+      - notMatchRegexRaw:
+          pattern: DEPRECATED
 
   - it: reports an environment other than staging or production
     set:

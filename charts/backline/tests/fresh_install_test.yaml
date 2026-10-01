@@ -20,6 +20,8 @@ tests:
     templates:
       - templates/worker-deployment.yaml
       - templates/gitproxy-deployment.yaml
+    set:
+      gitproxy.enabled: true
     asserts:
       - exists:
           path: spec.template.metadata.annotations["checksum/config"]

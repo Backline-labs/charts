@@ -177,6 +177,8 @@ worker:
 # GITPROXY COMPONENT (On-prem git server connectivity)
 # ============================================================================
 gitproxy:
+  # Enable when Backline must reach an on-prem git server (e.g. Bitbucket Data Center).
+  enabled: false
   replicaCount: 1
   image:
     # Leave empty: the janitor keeps the image on the newest published build and

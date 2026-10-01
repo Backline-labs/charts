@@ -126,6 +126,11 @@ https://app.backline.ai
 {{ printf "langfuse-config" | quote }}
 {{- end -}}
 
+{{/* Deployments the janitor restarts when LOG_STREAM_NAME changes. */}}
+{{- define "janitor.restartDeployments" -}}
+worker{{ if .Values.gitproxy.enabled }} gitproxy{{ end }}
+{{- end -}}
+
 {{/* janitor.image.name / .tag are deprecated but still honoured so mirrored installs keep pulling. */}}
 {{- define "janitor.image" -}}
 {{- $image := .Values.janitor.image -}}
@@ -158,9 +163,6 @@ it differs from its old default, so --reuse-values (which replays old defaults) 
 {{- $env := toString (default "" $v.environment) -}}
 {{- if and $env (not (has $env (list "production" "staging"))) -}}
 {{- $msgs = append $msgs (printf "environment (%q) is no longer read: the chart always connects to Backline production. Remove it." $env) -}}
-{{- end -}}
-{{- if and (hasKey ($v.gitproxy | default dict) "enabled") (not $v.gitproxy.enabled) -}}
-{{- $msgs = append $msgs "gitproxy.enabled is no longer read: GitProxy is now always deployed and stays idle until an on-prem git integration is connected. Remove it from your values if you set it." -}}
 {{- end -}}
 {{- $oldProbes := dict
   "livenessProbe" (dict "httpGet" (dict "path" "/health" "port" 8080) "initialDelaySeconds" 10 "periodSeconds" 5)

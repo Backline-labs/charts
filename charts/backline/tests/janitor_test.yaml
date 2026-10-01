@@ -1,0 +1,34 @@
+suite: janitor
+templates:
+  - templates/janitor-cronjob.yaml
+set:
+  accessKey: test-key
+tests:
+  - it: updates and restarts only the worker when GitProxy is disabled
+    asserts:
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: "TOTAL_STEPS=5\n"
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: 'rollout restart deployment worker\n'
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: "Worker image updater"
+      - notMatchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: "GitProxy image updater|DEPLOYMENT_NAME=gitproxy"
+
+  - it: also updates and restarts GitProxy when it is enabled
+    set:
+      gitproxy.enabled: true
+    asserts:
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: "TOTAL_STEPS=6\n"
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: 'rollout restart deployment worker gitproxy\n'
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: "Worker image updater[\\s\\S]*GitProxy image updater"

@@ -119,7 +119,7 @@ graph TB
 The chart deploys the following components:
 
 - **Worker**: Main application handling code analysis workloads, AI interactions, and job orchestration
-- **GitProxy**: Enables Backline to work with on-prem git servers (e.g., Bitbucket Data Center) by proxying git API operations. Runs on the customer network and makes outbound-only connections to Backline cloud. Always deployed; it stays idle until an on-prem git integration is connected
+- **GitProxy** *(optional)*: Enables Backline to work with on-prem git servers (e.g., Bitbucket Data Center) by proxying git API operations. Runs on the customer network and makes outbound-only connections to Backline cloud. Disabled by default
 - **Janitor**: CronJob that performs automated maintenance tasks including JWT token refresh, Docker registry authentication updates, and worker/gitproxy image updates
 - **ADOT Collector**: Sidecar container for exporting logs, traces, and metrics to Backline AI cloud infrastructure
 - **SeaweedFS**: Object storage for static assets and operational data (deployed as a subchart). Can be replaced by your own S3; see [External S3 Storage](#external-s3-storage)
@@ -235,10 +235,11 @@ The Worker is the main application component.
 
 ### GitProxy Configuration
 
-GitProxy enables Backline to interact with on-prem git servers that are not accessible from the internet. It runs on the customer's network and communicates with Backline cloud via outbound HTTPS connections. No additional credentials are needed — GitProxy uses the same `accessKey` as the Worker. It is always deployed and waits idle until an on-prem git integration is connected in Backline, so adding one needs no chart change.
+GitProxy enables Backline to interact with on-prem git servers that are not accessible from the internet. It runs on the customer's network and communicates with Backline cloud via outbound HTTPS connections. No additional credentials are needed — GitProxy uses the same `accessKey` as the Worker.
 
 | Parameter | Description | Default |
 | --- | --- | --- |
+| `gitproxy.enabled` | Enable GitProxy component | `false` |
 | `gitproxy.replicaCount` | Number of GitProxy replicas | `1` |
 | `gitproxy.image.name` | Image name | `prod-gitproxy` |
 | `gitproxy.image.tag` | Image tag. Leave empty: the Janitor tracks the newest published build and `helm upgrade` keeps the tag it set. A set tag is applied on each upgrade, not pinned | `""` |
@@ -250,6 +251,15 @@ GitProxy enables Backline to interact with on-prem git servers that are not acce
 | `gitproxy.nodeSelector` | Node selector for pod assignment | `{}` |
 | `gitproxy.tolerations` | Tolerations for pod assignment | `[]` |
 | `gitproxy.affinity` | Affinity rules for pod assignment | `{}` |
+
+**Enabling GitProxy:**
+
+```bash
+helm upgrade backline backline-ai/backline \
+  --namespace backline \
+  --reuse-values \
+  --set gitproxy.enabled=true
+```
 
 **Trusting a self-hosted git server's internal CA:**
 
@@ -1026,6 +1036,10 @@ resourceProfiles:
     limits:
       cpu: "4000m"
       memory: "16Gi"
+
+# Enable GitProxy for on-prem git server connectivity
+gitproxy:
+  enabled: true
 ```
 
 
@@ -1051,14 +1065,13 @@ helm upgrade backline \
 
 ### Upgrading to 1.6.0
 
-- GitProxy is always deployed. Releases that had `gitproxy.enabled: false` gain a `gitproxy` Deployment; it makes the same outbound connections as the Worker and idles without an on-prem git integration.
-- `helm install` and `helm upgrade` print a **DEPRECATED VALUES** notice for every removed value your configuration still sets to something other than its old default. Values replayed from old defaults by `--reuse-values` stay silent, except `gitproxy.enabled`.
-- These values are no longer read; remove them from your values file: `environment`, `gitproxy.enabled`, `worker.service.httpPort`, `gitproxy.service.httpPort`, the `livenessProbe` / `readinessProbe` and `otel.enabled` of `worker` and `gitproxy`, `gitproxy.adapter.*` and `gitproxy.temporal.*`.
+- `helm install` and `helm upgrade` print a **DEPRECATED VALUES** notice for every removed value your configuration still sets to something other than its old default. Values replayed from old defaults by `--reuse-values` stay silent.
+- These values are no longer read; remove them from your values file: `environment`, `worker.service.httpPort`, `gitproxy.service.httpPort`, the `livenessProbe` / `readinessProbe` and `otel.enabled` of `worker` and `gitproxy`, `gitproxy.adapter.*` and `gitproxy.temporal.*`.
 - `gitproxy.adapter.skipCertVerification` is gone. If you needed it to get past a TLS-inspecting proxy, supply that proxy's CA with `customCaCert` instead.
 - These values are deprecated but still used, so installs that pull through a mirror keep working: `worker.otel.collector.image`, `gitproxy.otel.collector.image` (GitProxy falls back to the Worker's), `janitor.image.name` and `janitor.image.tag`. A future release will stop reading them.
 - Existing installs keep their current SeaweedFS secret key; only new installs without `objectStorage.secretKey` get a generated one.
 - Buckets are created by the chart's own hook, and the `operational` retention window moves to `objectStorage.operationalRetention`. A `ttl` you set on `operational` in `seaweedfs.allInOne.s3.createBuckets` is still honoured while the new value is empty; the rest of that list is no longer read.
-- The Worker and GitProxy pods now roll whenever `helm upgrade` changes a ConfigMap they read, so the first upgrade to 1.6.0 restarts both.
+- The Worker and GitProxy pods now roll whenever `helm upgrade` changes a ConfigMap they read, so the first upgrade to 1.6.0 restarts them.
 
 ### Migrating from MinIO to SeaweedFS
 

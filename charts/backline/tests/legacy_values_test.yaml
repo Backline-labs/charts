@@ -24,6 +24,7 @@ tests:
   - it: falls back to the worker's collector override for gitproxy
     template: templates/gitproxy-deployment.yaml
     set:
+      gitproxy.enabled: true
       worker.otel.collector.image: mirror.example.com/otel:1
     asserts:
       - equal:
@@ -33,6 +34,7 @@ tests:
   - it: prefers gitproxy's own collector override for gitproxy
     template: templates/gitproxy-deployment.yaml
     set:
+      gitproxy.enabled: true
       worker.otel.collector.image: mirror.example.com/otel:1
       gitproxy.otel.collector.image: mirror.example.com/otel:2
     asserts:
@@ -109,6 +111,7 @@ tests:
   - it: ignores removed GitProxy tuning and skipCertVerification
     template: templates/gitproxy-configmap.yaml
     set:
+      gitproxy.enabled: true
       gitproxy.adapter.skipCertVerification: true
       gitproxy.adapter.maxRetries: 5
       gitproxy.temporal.maxConcurrentActivities: 10
@@ -134,10 +137,24 @@ tests:
           path: spec.template.spec.containers[?(@.name == "worker")].livenessProbe.httpGet.path
           value: /health
 
-  - it: always deploys GitProxy
-    template: templates/gitproxy-deployment.yaml
+  - it: renders no GitProxy objects by default
+    templates:
+      - templates/gitproxy-deployment.yaml
+      - templates/gitproxy-configmap.yaml
+      - templates/gitproxy-service.yaml
+      - templates/gitproxy-rbac.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders GitProxy when enabled
+    templates:
+      - templates/gitproxy-deployment.yaml
+      - templates/gitproxy-configmap.yaml
+      - templates/gitproxy-service.yaml
+      - templates/gitproxy-rbac.yaml
     set:
-      gitproxy.enabled: false
+      gitproxy.enabled: true
     asserts:
       - hasDocuments:
           count: 1
