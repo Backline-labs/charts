@@ -13,7 +13,7 @@ All pull requests must be approved by code owners before merging.
 ### Pull Request Requirements
 
 - **Title**: Must include type and scope according to [Conventional Commits](https://www.conventionalcommits.org/) recommendations
-- **Chart Version**: Must be bumped appropriately. The *README Version Sync* workflow copies `version` / `appVersion` into the chart's `README.md` on the pull request. A release that removes values or changes upgrade behaviour also gets an `Upgrading to <version>` note there
+- **Chart Version**: Must be bumped appropriately. The *README Version Sync* workflow copies `version` / `appVersion` into the chart's `README.md` on the pull request (it pushes as a GitHub App set in the `CHART_SYNC_APP_CLIENT_ID` variable and `CHART_SYNC_APP_PRIVATE_KEY` secret; fork pull requests must update the README themselves). A release that removes values or changes upgrade behaviour also gets an `Upgrading to <version>` note there
 - **Documentation**: All variables must be documented in `README.md` of the changed chart
 - **Tests**: `helm lint` and the chart's unit tests must pass; add or update tests under `charts/<chart>/tests/` for changed behaviour
 
