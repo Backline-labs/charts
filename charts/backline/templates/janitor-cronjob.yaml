@@ -197,9 +197,12 @@ spec:
               # Sanitize for CWL restrictions (no colon or asterisk)
               DCT=$(echo "$DCT" | tr -d ':' | tr -d '*')
 
-              # The janitor owns the log-stream ConfigMap; the chart never renders it.
+              # The janitor owns the log-stream ConfigMap; the chart never renders it. Pods wait for it.
               CURRENT=$(kubectl -n "$NAMESPACE" get configmap log-stream -o jsonpath='{.data.LOG_STREAM_NAME}' 2>/dev/null || true)
-              if [ "$CURRENT" != "$DCT" ]; then
+              if [ -z "$DCT" ]; then
+                echo "tenant ID missing from the JWT; log-stream ConfigMap left unchanged"
+                step_failed=1
+              elif [ "$CURRENT" != "$DCT" ]; then
                 echo "Setting log-stream ConfigMap LOG_STREAM_NAME to $DCT"
                 kubectl -n "$NAMESPACE" create configmap log-stream \
                   --from-literal=LOG_STREAM_NAME="$DCT" \
@@ -256,7 +259,7 @@ spec:
               NEW_IMAGE="$REGISTRY/$REPOSITORY:$NEW_TAG"
               echo "Updating $DEPLOYMENT_NAME container $CONTAINER_NAME to $NEW_IMAGE"
               kubectl -n "$NAMESPACE" set image deployment/$DEPLOYMENT_NAME $CONTAINER_NAME="$NEW_IMAGE"
-              ) || updater_failed=1
+              ) || step_failed=1
 
               echo "[5/$TOTAL_STEPS] Langfuse config sync"
               LANGFUSE_SECRET={{ include "secretname.langfuse" . }}
@@ -336,11 +339,11 @@ spec:
               NEW_IMAGE="$REGISTRY/$REPOSITORY:$NEW_TAG"
               echo "Updating $DEPLOYMENT_NAME container $CONTAINER_NAME to $NEW_IMAGE"
               kubectl -n "$NAMESPACE" set image deployment/$DEPLOYMENT_NAME $CONTAINER_NAME="$NEW_IMAGE"
-              ) || updater_failed=1
+              ) || step_failed=1
               {{- end }}
 
-              # Updaters don't abort later steps, but a failed update must still fail the Job.
-              if [ "${updater_failed:-0}" -eq 1 ]; then echo "image updater failed; see output above"; exit 1; fi
+              # Failed steps don't abort later ones, but must still fail the Job.
+              if [ "${step_failed:-0}" -eq 1 ]; then echo "a janitor step failed; see output above"; exit 1; fi
 
               } 2>&1 | tee -a "$LOG_FILE"
           volumes:

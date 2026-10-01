@@ -961,7 +961,7 @@ The Janitor CronJob automatically creates and rotates the following secrets:
 - Refresh frequency: Every 8 hours
 - Usage: Allows worker deployment to pull images from private ECR registry
 
-It also keeps the **`log-stream`** ConfigMap: `LOG_STREAM_NAME`, the tenant ID from the JWT, under which the ADOT collectors ship logs. It is not a setting; when it changes, the Janitor restarts the Worker (and GitProxy) so their collectors pick it up.
+It also keeps the **`log-stream`** ConfigMap: `LOG_STREAM_NAME`, the tenant ID from the JWT, under which the ADOT collectors ship logs. It is not a setting. Pods do not start until it exists, so no logs ship without it; when it changes, the Janitor restarts the Worker (and GitProxy) so their collectors pick it up.
 
 ### Troubleshooting Secret Issues
 
@@ -1074,7 +1074,7 @@ helm upgrade backline \
 - Existing installs keep their current SeaweedFS secret key; only new installs without `objectStorage.secretKey` get a generated one.
 - Buckets are created by the chart's own hook, and the `operational` retention window moves to `objectStorage.operationalRetention`. A `ttl` you set on `operational` in `seaweedfs.allInOne.s3.createBuckets` is still honoured while the new value is empty; the rest of that list is no longer read.
 - The Worker and GitProxy pods now roll whenever `helm upgrade` changes a ConfigMap they read, so the first upgrade to 1.6.0 restarts them.
-- The tenant ID logs ship under moves from `adapter-config` to the Janitor-owned `log-stream` ConfigMap. Right after the upgrade, logs ship without it for up to a minute, until the Janitor's next run writes it and restarts the pods.
+- The tenant ID logs ship under moves from `adapter-config` to the Janitor-owned `log-stream` ConfigMap. Pods started by the upgrade wait (`CreateContainerConfigError`) until the Janitor's next run creates it, within about a minute; the rolling update keeps the existing pods running meanwhile.
 
 ### Migrating from MinIO to SeaweedFS
 

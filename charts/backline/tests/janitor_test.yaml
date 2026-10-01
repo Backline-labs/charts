@@ -13,6 +13,12 @@ tests:
           path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
           pattern: "configmap adapter-config"
 
+  - it: fails the Job instead of writing an empty tenant ID
+    asserts:
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: 'if \[ -z "\$DCT" \]; then\s+echo "tenant ID missing from the JWT; log-stream ConfigMap left unchanged"\s+step_failed=1'
+
   - it: updates and restarts only the worker when GitProxy is disabled
     asserts:
       - matchRegex:

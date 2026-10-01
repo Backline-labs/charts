@@ -27,7 +27,7 @@ operational ttl; before 1.6.0 it was set in seaweedfs.allInOne.s3.createBuckets,
 {{- toJson $buckets -}}
 {{- end -}}
 
-{{/* Internal: Backline's own installs pass environment=staging; anything else is production. */}}
+{{/* Non-empty for environment=staging; any other value selects production. */}}
 {{- define "backline.isStaging" -}}
 {{- if eq (toString .Values.environment) "staging" -}}true{{- end -}}
 {{- end -}}

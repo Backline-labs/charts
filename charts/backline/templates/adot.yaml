@@ -63,13 +63,12 @@ true
       value: {{ include "logging.roleArn" . | quote }}
     - name: AWS_REGION
       value: {{ include "region" . | quote }}
-    # Tenant ID; the janitor creates this ConfigMap, so pods may start before it exists.
+    # Tenant ID from the janitor's log-stream ConfigMap. Required, so pods wait for it instead of shipping logs without it.
     - name: LOG_STREAM_NAME
       valueFrom:
         configMapKeyRef:
           name: log-stream
           key: LOG_STREAM_NAME
-          optional: true
   {{- with include "backline.proxyEnv" . | trim }}
   {{- . | nindent 4 }}
   {{- end }}
