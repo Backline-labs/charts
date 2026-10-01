@@ -3,6 +3,21 @@ entries:
   backline:
   - apiVersion: v2
     appVersion: 1.1.0
+    created: "2026-10-01T12:47:28.016560147Z"
+    dependencies:
+    - condition: seaweedfs.enabled
+      name: seaweedfs
+      repository: https://seaweedfs.github.io/seaweedfs/helm
+      version: 4.31.0
+    description: Backline on-prem stack
+    digest: e192c887a5377ca5e78f4ec4bb697ecce9a3de44d205412a6addadc7a66ed29a
+    name: backline
+    type: application
+    urls:
+    - https://github.com/Backline-labs/charts/releases/download/backline-1.6.0/backline-1.6.0.tgz
+    version: 1.6.0
+  - apiVersion: v2
+    appVersion: 1.1.0
     created: "2026-09-30T14:16:54.99404278Z"
     dependencies:
     - condition: seaweedfs.enabled
@@ -346,4 +361,4 @@ entries:
     urls:
     - https://github.com/Backline-labs/charts/releases/download/backline-0.1.0/backline-0.1.0.tgz
     version: 0.1.0
-generated: "2026-09-30T14:16:54.994222408Z"
+generated: "2026-10-01T12:47:28.016721806Z"
