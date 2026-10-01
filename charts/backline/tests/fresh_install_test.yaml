@@ -9,12 +9,27 @@ tests:
           path: stringData.secretKey
           pattern: ^[A-Za-z0-9]{32}$
 
-  - it: starts LOG_STREAM_NAME empty for the janitor to fill
+  - it: leaves LOG_STREAM_NAME to the janitor rather than the chart
     template: templates/adapter-configmap.yaml
     asserts:
-      - equal:
+      - notExists:
           path: data.LOG_STREAM_NAME
-          value: ""
+
+  - it: reads LOG_STREAM_NAME from the optional janitor-owned log-stream ConfigMap
+    template: templates/worker-deployment.yaml
+    capabilities:
+      majorVersion: 1
+      minorVersion: 30
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[?(@.name == "adot-collector")].env
+          content:
+            name: LOG_STREAM_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: log-stream
+                key: LOG_STREAM_NAME
+                optional: true
 
   - it: puts config checksums on the pod template so ConfigMap changes roll pods
     templates:

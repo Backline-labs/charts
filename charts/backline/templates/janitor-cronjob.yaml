@@ -197,12 +197,13 @@ spec:
               # Sanitize for CWL restrictions (no colon or asterisk)
               DCT=$(echo "$DCT" | tr -d ':' | tr -d '*')
 
-              # Update adapter-config ConfigMap LOG_STREAM_NAME if changed
-              CM_JSON=$(kubectl -n "$NAMESPACE" get configmap adapter-config -o json)
-              CURRENT=$(echo "$CM_JSON" | jq -r '.data.LOG_STREAM_NAME // empty')
+              # The janitor owns the log-stream ConfigMap; the chart never renders it.
+              CURRENT=$(kubectl -n "$NAMESPACE" get configmap log-stream -o jsonpath='{.data.LOG_STREAM_NAME}' 2>/dev/null || true)
               if [ "$CURRENT" != "$DCT" ]; then
-                echo "Updating adapter-config ConfigMap LOG_STREAM_NAME to $DCT"
-                echo "$CM_JSON" | jq --arg v "$DCT" '.data.LOG_STREAM_NAME = $v' | kubectl apply -f -
+                echo "Setting log-stream ConfigMap LOG_STREAM_NAME to $DCT"
+                kubectl -n "$NAMESPACE" create configmap log-stream \
+                  --from-literal=LOG_STREAM_NAME="$DCT" \
+                  --dry-run=client -o yaml | kubectl apply -f -
                 # Pods read it only at start; restart here, since the image updaters may find nothing to do.
                 echo "Restarting {{ include "janitor.restartDeployments" . }} to pick up the ConfigMap change"
                 kubectl -n "$NAMESPACE" rollout restart deployment {{ include "janitor.restartDeployments" . }}

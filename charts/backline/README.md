@@ -961,6 +961,8 @@ The Janitor CronJob automatically creates and rotates the following secrets:
 - Refresh frequency: Every 8 hours
 - Usage: Allows worker deployment to pull images from private ECR registry
 
+It also keeps the **`log-stream`** ConfigMap: `LOG_STREAM_NAME`, the tenant ID from the JWT, under which the ADOT collectors ship logs. It is not a setting; when it changes, the Janitor restarts the Worker (and GitProxy) so their collectors pick it up.
+
 ### Troubleshooting Secret Issues
 
 **ImagePullBackOff on worker pods:**
@@ -1072,6 +1074,7 @@ helm upgrade backline \
 - Existing installs keep their current SeaweedFS secret key; only new installs without `objectStorage.secretKey` get a generated one.
 - Buckets are created by the chart's own hook, and the `operational` retention window moves to `objectStorage.operationalRetention`. A `ttl` you set on `operational` in `seaweedfs.allInOne.s3.createBuckets` is still honoured while the new value is empty; the rest of that list is no longer read.
 - The Worker and GitProxy pods now roll whenever `helm upgrade` changes a ConfigMap they read, so the first upgrade to 1.6.0 restarts them.
+- The tenant ID logs ship under moves from `adapter-config` to the Janitor-owned `log-stream` ConfigMap. Right after the upgrade, logs ship without it for up to a minute, until the Janitor's next run writes it and restarts the pods.
 
 ### Migrating from MinIO to SeaweedFS
 
@@ -1099,8 +1102,8 @@ kubectl -n backline delete pvc minio --ignore-not-found
 
 The chart is built for Helm running against the cluster, and three of its mechanisms depend on that:
 
-- **Live state at render time.** `lookup` keeps what the Janitor or an earlier install set: the Worker and GitProxy image tags, `LOG_STREAM_NAME` in the `adapter-config` ConfigMap, the generated `objectStorage.secretKey`, and the `langfuse-config` Secret, which is rendered only while it does not exist.
-- **Janitor writes to chart objects.** It moves the `worker` and `gitproxy` container images, sets `LOG_STREAM_NAME`, and fills `langfuse-config`.
+- **Live state at render time.** `lookup` keeps what the Janitor or an earlier install set: the Worker and GitProxy image tags, the generated `objectStorage.secretKey`, and the `langfuse-config` Secret, which is rendered only while it does not exist.
+- **Janitor writes to chart objects.** It moves the `worker` and `gitproxy` container images and fills `langfuse-config`. The objects it creates itself (`session-jwt`, `dockerconfig`, the `log-stream` ConfigMap) are not part of the release.
 - **Hooks.** Post-install and post-upgrade Jobs create the buckets and sweep retention.
 
 A tool that renders without cluster access sees none of the live values, and a tool that corrects drift undoes the Janitor's changes. Configure your tool as below.
@@ -1124,10 +1127,6 @@ spec:
         target:
           kind: Deployment
           name: gitproxy
-      - paths: ["/data/LOG_STREAM_NAME"]
-        target:
-          kind: ConfigMap
-          name: adapter-config
 ```
 
 ### Argo CD
@@ -1135,7 +1134,7 @@ spec:
 Argo CD renders charts with `helm template`, so `lookup` returns nothing:
 
 - Set `objectStorage.secretKey` (or source it with `externalSecrets.objectStorage`). Left empty, every render generates a new key.
-- Every render carries the bootstrap image tag, an empty `LOG_STREAM_NAME` and placeholder `langfuse-config` values. Ignore those fields, and have syncs respect that, so a sync does not undo the Janitor:
+- Every render carries the bootstrap image tag and placeholder `langfuse-config` values. Ignore those fields, and have syncs respect that, so a sync does not undo the Janitor:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -1152,10 +1151,6 @@ spec:
       name: gitproxy
       jqPathExpressions:
         - .spec.template.spec.containers[] | select(.name == "gitproxy").image
-    - kind: ConfigMap
-      name: adapter-config
-      jsonPointers:
-        - /data/LOG_STREAM_NAME
     - kind: Secret
       name: langfuse-config
       jsonPointers:
@@ -1190,10 +1185,11 @@ helm uninstall backline --namespace backline
 
 **Note:** The PersistentVolumeClaim may not be automatically deleted if not created by the chart.
 
-The Secrets `accesskey`, `custom-ca` and `seaweedfs-s3-secret` are kept on uninstall (they are marked `helm.sh/resource-policy: keep` so they can move between Helm and the External Secrets Operator), as are the Janitor-managed `session-jwt`, `dockerconfig` and `langfuse-config`. Delete the namespace, or the secrets explicitly, to remove them:
+The Secrets `accesskey`, `custom-ca` and `seaweedfs-s3-secret` are kept on uninstall (they are marked `helm.sh/resource-policy: keep` so they can move between Helm and the External Secrets Operator), as are the Janitor-managed `session-jwt`, `dockerconfig` and `langfuse-config` and its `log-stream` ConfigMap. Delete the namespace, or the objects explicitly, to remove them:
 
 ```bash
 kubectl delete secret -n backline accesskey custom-ca seaweedfs-s3-secret session-jwt dockerconfig langfuse-config --ignore-not-found
+kubectl delete configmap -n backline log-stream --ignore-not-found
 ```
 
 ## Troubleshooting

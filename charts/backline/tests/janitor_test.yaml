@@ -4,6 +4,15 @@ templates:
 set:
   accessKey: test-key
 tests:
+  - it: writes the tenant ID to its own log-stream ConfigMap
+    asserts:
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: "create configmap log-stream"
+      - notMatchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: "configmap adapter-config"
+
   - it: updates and restarts only the worker when GitProxy is disabled
     asserts:
       - matchRegex:

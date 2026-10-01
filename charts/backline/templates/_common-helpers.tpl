@@ -127,8 +127,8 @@ https://app.backline.ai
 {{- end -}}
 
 {{/*
-Deployments the janitor restarts after writing LOG_STREAM_NAME, the tenant ID it reads from the
-access key's JWT. It is not a setting: empty until the janitor's first run, then fixed per access key.
+Deployments the janitor restarts after writing LOG_STREAM_NAME (the tenant ID from the access key's
+JWT) to its log-stream ConfigMap; pods read it only at start.
 */}}
 {{- define "janitor.restartDeployments" -}}
 worker{{ if .Values.gitproxy.enabled }} gitproxy{{ end }}
