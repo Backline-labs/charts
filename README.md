@@ -19,12 +19,12 @@ All pull requests must be approved by code owners before merging.
 
 ### Running the tests
 
-Unit tests use the [helm-unittest](https://github.com/helm-unittest/helm-unittest) plugin and need no cluster. CI runs them on every pull request.
+Unit tests use the [helm-unittest](https://github.com/helm-unittest/helm-unittest) plugin and need no cluster. CI lints and tests every chart a pull request changes, and every chart when the test workflow itself changes. A chart that needs values to render keeps them in `tests/values/lint.yaml`.
 
 ```bash
 helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v1.1.2
 helm dependency build charts/backline
-helm lint charts/backline --set accessKey=test
+helm lint charts/backline -f charts/backline/tests/values/lint.yaml
 helm unittest charts/backline --with-subchart=false
 ```
 

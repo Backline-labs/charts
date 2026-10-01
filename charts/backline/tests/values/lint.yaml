@@ -1,0 +1,2 @@
+# Values helm lint needs to render the chart.
+accessKey: test
