@@ -1,37 +1,59 @@
-name: README Version
+name: README Version Sync
 
 on:
   pull_request:
     paths:
-      - 'charts/**'
+      - 'charts/*/Chart.yaml'
+      - 'charts/*/README.md'
       - '.github/workflows/readme-version.yaml'
-  workflow_dispatch:
 
 jobs:
-  check:
+  sync:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # Commits pushed with GITHUB_TOKEN start no workflows, so the tests are dispatched explicitly.
+      actions: write
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
 
-      - name: Check README versions match Chart.yaml
+      - name: Copy Chart.yaml versions into README.md
         run: |
-          status=0
           for chart in charts/*/Chart.yaml; do
-            dir=$(dirname "$chart")
-            readme="$dir/README.md"
-            [ -f "$readme" ] || { echo "::error file=$readme::missing README.md"; status=1; continue; }
+            readme="$(dirname "$chart")/README.md"
+            [ -f "$readme" ] || continue
             for field in "version:Chart Version" "appVersion:App Version"; do
               key=${field%%:*}
               label=${field#*:}
-              want=$(awk -v k="$key" '$1 == k":" { gsub(/"/, "", $2); print $2; exit }' "$chart")
-              got=$(sed -n "s/^\*\*$label:\*\* *//p" "$readme" | head -n1 | tr -d '[:space:]')
-              if [ "$want" != "$got" ]; then
-                echo "::error file=$readme::$label is '${got:-missing}', but $chart has $key '$want'"
-                status=1
-              else
-                echo "$readme: $label $got matches"
+              value=$(awk -v k="$key" '$1 == k":" { gsub(/"/, "", $2); print $2; exit }' "$chart")
+              if ! grep -q "^\*\*$label:\*\*" "$readme"; then
+                echo "::warning file=$readme::no '**$label:**' line to update"
+                continue
               fi
+              sed -i "s/^\*\*$label:\*\*.*/**$label:** $value/" "$readme"
             done
           done
-          exit $status
+          git diff --stat
+
+      - name: Push the update to the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          if git diff --quiet; then
+            echo "README versions already match Chart.yaml"
+            exit 0
+          fi
+          if [ "$SAME_REPO" != "true" ]; then
+            git diff
+            echo "::error::README versions differ from Chart.yaml; apply the diff above (fork branches cannot be updated automatically)"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Sync README chart versions with Chart.yaml"
+          git push
+          gh workflow run chart-test.yaml --ref "$GITHUB_HEAD_REF"
