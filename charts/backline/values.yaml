@@ -127,7 +127,7 @@ seaweedfs:
       enabled: true
       enableAuth: true
       existingConfigSecret: seaweedfs-s3-secret
-      # Buckets come from files/buckets.json via the chart's own hook; keep this empty.
+      # Buckets come from files/buckets.yaml via the chart's own hook; keep this empty.
       createBuckets: []
     podSecurityContext: *seaweedfsPodSecurityContext
     containerSecurityContext: *seaweedfsContainerSecurityContext

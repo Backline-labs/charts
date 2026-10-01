@@ -1,0 +1,37 @@
+name: README Version
+
+on:
+  pull_request:
+    paths:
+      - 'charts/**'
+      - '.github/workflows/readme-version.yaml'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check README versions match Chart.yaml
+        run: |
+          status=0
+          for chart in charts/*/Chart.yaml; do
+            dir=$(dirname "$chart")
+            readme="$dir/README.md"
+            [ -f "$readme" ] || { echo "::error file=$readme::missing README.md"; status=1; continue; }
+            for field in "version:Chart Version" "appVersion:App Version"; do
+              key=${field%%:*}
+              label=${field#*:}
+              want=$(awk -v k="$key" '$1 == k":" { gsub(/"/, "", $2); print $2; exit }' "$chart")
+              got=$(sed -n "s/^\*\*$label:\*\* *//p" "$readme" | head -n1 | tr -d '[:space:]')
+              if [ "$want" != "$got" ]; then
+                echo "::error file=$readme::$label is '${got:-missing}', but $chart has $key '$want'"
+                status=1
+              else
+                echo "$readme: $label $got matches"
+              fi
+            done
+          done
+          exit $status

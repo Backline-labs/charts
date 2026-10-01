@@ -13,7 +13,7 @@ All pull requests must be approved by code owners before merging.
 ### Pull Request Requirements
 
 - **Title**: Must include type and scope according to [Conventional Commits](https://www.conventionalcommits.org/) recommendations
-- **Chart Version**: Must be bumped appropriately, together with the `Chart Version` / `App Version` lines in the chart's `README.md`. A release that removes values or changes upgrade behaviour also gets an `Upgrading to <version>` note there
+- **Chart Version**: Must be bumped appropriately, together with the `Chart Version` / `App Version` lines in the chart's `README.md` (the *README Version* check fails otherwise). A release that removes values or changes upgrade behaviour also gets an `Upgrading to <version>` note there
 - **Documentation**: All variables must be documented in `README.md` of the changed chart
 - **Tests**: `helm lint` and the chart's unit tests must pass; add or update tests under `charts/<chart>/tests/` for changed behaviour
 

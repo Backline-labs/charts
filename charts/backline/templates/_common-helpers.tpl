@@ -12,11 +12,11 @@
 {{- end -}}
 
 {{/*
-Buckets from files/buckets.json as JSON. objectStorage.operationalRetention overrides the
+Buckets from files/buckets.yaml, rendered as JSON. objectStorage.operationalRetention overrides the
 operational ttl; before 1.6.0 it was set in seaweedfs.allInOne.s3.createBuckets, still honoured.
 */}}
 {{- define "backline.buckets" -}}
-{{- $buckets := .Files.Get "files/buckets.json" | fromJson -}}
+{{- $buckets := .Files.Get "files/buckets.yaml" | fromYaml -}}
 {{- $ttl := (.Values.objectStorage).operationalRetention -}}
 {{- if not $ttl -}}
 {{- range (((.Values.seaweedfs).allInOne).s3).createBuckets -}}
@@ -126,7 +126,10 @@ https://app.backline.ai
 {{ printf "langfuse-config" | quote }}
 {{- end -}}
 
-{{/* Deployments the janitor restarts when LOG_STREAM_NAME changes. */}}
+{{/*
+Deployments the janitor restarts after setting LOG_STREAM_NAME. It is empty on install, and the
+janitor keeps it equal to the access key's tenant claim, so it changes only on first run or a new key.
+*/}}
 {{- define "janitor.restartDeployments" -}}
 worker{{ if .Values.gitproxy.enabled }} gitproxy{{ end }}
 {{- end -}}

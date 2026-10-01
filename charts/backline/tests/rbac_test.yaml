@@ -1,0 +1,17 @@
+suite: worker RBAC
+templates:
+  - templates/worker-rbac.yaml
+set:
+  accessKey: test-key
+tests:
+  - it: lets the worker read events
+    documentSelector:
+      path: kind
+      value: Role
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["", "events.k8s.io"]
+            resources: ["events"]
+            verbs: ["get", "list", "watch"]
