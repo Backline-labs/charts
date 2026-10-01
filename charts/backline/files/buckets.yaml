@@ -1,0 +1,5 @@
+# Buckets the chart creates in SeaweedFS. The worker depends on these names.
+# objectStorage.operationalRetention overrides the operational ttl.
+operational:
+  ttl: 7d
+static-assets: {}

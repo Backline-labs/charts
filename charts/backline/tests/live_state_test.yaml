@@ -1,0 +1,63 @@
+suite: values kept from the live cluster
+set:
+  accessKey: test-key
+release:
+  namespace: backline
+kubernetesProvider:
+  scheme:
+    "v1/Secret":
+      gvr:
+        version: v1
+        resource: secrets
+      namespaced: true
+    "apps/v1/Deployment":
+      gvr:
+        group: apps
+        version: v1
+        resource: deployments
+      namespaced: true
+  objects:
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: seaweedfs-s3-secret
+        namespace: backline
+      data:
+        secretKey: ZXhpc3Rpbmcta2V5 # existing-key
+    - apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: worker
+        namespace: backline
+      spec:
+        template:
+          spec:
+            containers:
+              - name: worker
+                image: 314146328431.dkr.ecr.us-east-1.amazonaws.com/prod-runner:abc1234-1790000000
+tests:
+  - it: keeps the existing SeaweedFS secret key
+    template: templates/seaweedfs-secret.yaml
+    asserts:
+      - equal:
+          path: stringData.secretKey
+          value: existing-key
+      - matchRegex:
+          path: stringData.seaweedfs_s3_config
+          pattern: '"secretKey":"existing-key"'
+
+  - it: prefers an explicit secret key over the existing one
+    template: templates/seaweedfs-secret.yaml
+    set:
+      objectStorage.secretKey: explicit-key
+    asserts:
+      - equal:
+          path: stringData.secretKey
+          value: explicit-key
+
+  - it: keeps the worker tag the janitor set
+    template: templates/worker-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "worker")].image
+          value: 314146328431.dkr.ecr.us-east-1.amazonaws.com/prod-runner:abc1234-1790000000

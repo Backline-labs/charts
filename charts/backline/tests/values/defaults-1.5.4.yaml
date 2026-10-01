@@ -1,5 +1,7 @@
+# Chart 1.5.4 default values, replayed by --reuse-values upgrades from that release.
 # Global configuration
 accessKey: ""
+environment: "production"
 namespaceOverride: "backline"
 
 # ============================================================================
@@ -72,12 +74,7 @@ externalSecrets:
 # OBJECT STORAGE (SeaweedFS, S3-compatible)
 objectStorage:
   accessKey: "backline"
-  # How long objects in the operational bucket are kept (empty = 7d). The window binds
-  # at write time; objects stored without one are removed on install/upgrade.
-  operationalRetention: ""
-  # Leave empty to generate a random key on first install; upgrades keep it. Set it
-  # when rendering without cluster access (helm template, Argo CD), or it changes each render.
-  secretKey: ""
+  secretKey: "backline-seaweedfs-password"
 
 seaweedfs:
   enabled: true
@@ -127,8 +124,11 @@ seaweedfs:
       enabled: true
       enableAuth: true
       existingConfigSecret: seaweedfs-s3-secret
-      # Buckets come from files/buckets.yaml via the chart's own hook; keep this empty.
-      createBuckets: []
+      createBuckets:
+        # ttl binds at write; objects stored without one are removed on install/upgrade
+        - name: operational
+          ttl: 7d
+        - name: static-assets
     podSecurityContext: *seaweedfsPodSecurityContext
     containerSecurityContext: *seaweedfsContainerSecurityContext
     resources:
@@ -142,8 +142,9 @@ seaweedfs:
 # Janitor component
 janitor:
   image:
-    # Point at a mirror of docker.io if the cluster cannot pull from it directly.
     registry: docker.io
+    name: dtzar/helm-kubectl
+    tag: 3.16.1
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -158,10 +159,11 @@ worker:
   replicaCount: 1
   image:
     # Leave empty: the janitor keeps the image on the newest published build and
-    # helm upgrade preserves the tag it set. A tag set here is not a pin: each
-    # helm upgrade applies it, then the janitor moves on to the newest build.
+    # helm upgrade preserves the tag it set. Set a tag only to override that.
     tag: ""
     pullPolicy: IfNotPresent
+  service:
+    httpPort: 8080
   resources:
     requests:
       cpu: "500m"
@@ -169,23 +171,45 @@ worker:
     limits:
       cpu: "2000m"
       memory: "2Gi"
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+  readinessProbe:
+    httpGet:
+      path: /readiness
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 3
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  otel:
+    enabled: true
+    collector:
+      image: public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1
 
 # ============================================================================
 # GITPROXY COMPONENT (On-prem git server connectivity)
 # ============================================================================
 gitproxy:
-  # Enable when Backline must reach an on-prem git server (e.g. Bitbucket Data Center).
   enabled: false
   replicaCount: 1
   image:
     # Leave empty: the janitor keeps the image on the newest published build and
-    # helm upgrade preserves the tag it set. A tag set here is not a pin: each
-    # helm upgrade applies it, then the janitor moves on to the newest build.
+    # helm upgrade preserves the tag it set. Set a tag only to override that.
     tag: ""
     pullPolicy: IfNotPresent
+  service:
+    httpPort: 8080
+  adapter:
+    skipCertVerification: false
+    maxRetries: 3
+    retryDelay: "1s"
+  temporal:
+    maxConcurrentActivities: 20
   resources:
     requests:
       cpu: "250m"
@@ -193,9 +217,25 @@ gitproxy:
     limits:
       cpu: "500m"
       memory: "512Mi"
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+  readinessProbe:
+    httpGet:
+      path: /readiness
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 3
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  otel:
+    enabled: true
+    collector:
+      image: public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1
 
 # ============================================================================
 # RESOURCE PROFILES FOR EPHEMERAL JOBS

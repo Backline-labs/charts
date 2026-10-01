@@ -1,0 +1,34 @@
+name: Test Charts
+
+on:
+  pull_request:
+    paths:
+      - 'charts/**'
+      - '.github/workflows/chart-test.yaml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.19.0
+
+      - name: Build chart dependencies
+        run: |
+          helm repo add seaweedfs https://seaweedfs.github.io/seaweedfs/helm
+          helm dependency build charts/backline
+
+      - name: Lint
+        run: helm lint charts/backline --set accessKey=test
+
+      - name: Install helm-unittest
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version v1.1.2
+
+      - name: Unit tests
+        run: helm unittest charts/backline --with-subchart=false

@@ -1,0 +1,99 @@
+name: Bump Chart Version
+
+on:
+  pull_request:
+    paths:
+      - 'charts/**'
+      - '.github/workflows/bump-version.yaml'
+
+concurrency:
+  group: bump-version-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+      APP_CONFIGURED: ${{ vars.CHART_SYNC_APP_CLIENT_ID != '' }}
+    steps:
+      # A GITHUB_TOKEN push would hold the PR's checks for manual approval; an app token does not.
+      - name: Create app token
+        id: app-token
+        if: env.SAME_REPO == 'true' && env.APP_CONFIGURED == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CHART_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CHART_SYNC_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
+          fetch-depth: 0
+
+      - name: Fetch the base branch
+        run: git fetch --no-tags "https://github.com/${GITHUB_REPOSITORY}.git" "+refs/heads/${GITHUB_BASE_REF}:refs/remotes/base/${GITHUB_BASE_REF}"
+
+      - name: Bump changed charts and sync their READMEs
+        env:
+          BASE: base/${{ github.base_ref }}
+        run: |
+          chart_value() { awk -v k="$1" '$1 == k":" { gsub(/"/, "", $2); print $2; exit }'; }
+          newer() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n1)" = "$1" ]; }
+
+          for chart in charts/*/Chart.yaml; do
+            dir=$(dirname "$chart")
+            if [ -n "$(git diff --name-only "$BASE"...HEAD -- "$dir" ":(exclude)$dir/tests")" ]; then
+              base_version=$(git show "$BASE:$chart" 2>/dev/null | chart_value version || true)
+              version=$(chart_value version < "$chart")
+              # A version already above the base is kept, so minor and major bumps stay manual.
+              if [ -n "$base_version" ] && ! newer "$version" "$base_version"; then
+                IFS=. read -r major minor patch <<< "${base_version%%-*}"
+                bumped="$major.$minor.$((patch + 1))"
+                echo "$dir: version $version is not above $BASE's $base_version; bumping to $bumped"
+                sed -i "s/^version:.*/version: $bumped/" "$chart"
+              fi
+            fi
+
+            readme="$dir/README.md"
+            [ -f "$readme" ] || continue
+            for field in "version:Chart Version" "appVersion:App Version"; do
+              key=${field%%:*}
+              label=${field#*:}
+              value=$(chart_value "$key" < "$chart")
+              if ! grep -q "^\*\*$label:\*\*" "$readme"; then
+                echo "::warning file=$readme::no '**$label:**' line to update"
+                continue
+              fi
+              sed -i "s/^\*\*$label:\*\*.*/**$label:** $value/" "$readme"
+            done
+          done
+          git diff --stat
+
+      - name: Push the update to the pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          if git diff --quiet; then
+            echo "Chart versions and READMEs are up to date"
+            exit 0
+          fi
+          if [ "$SAME_REPO" != "true" ] || [ "$APP_CONFIGURED" != "true" ]; then
+            git diff
+            reason="fork branches cannot be updated automatically"
+            [ "$SAME_REPO" = "true" ] && reason="set the CHART_SYNC_APP_CLIENT_ID variable and CHART_SYNC_APP_PRIVATE_KEY secret to enable automatic updates"
+            echo "::error::Chart versions or READMEs need the update above ($reason)"
+            exit 1
+          fi
+          user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git commit -am "Bump chart version and sync README"
+          git push

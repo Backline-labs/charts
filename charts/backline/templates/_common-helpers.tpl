@@ -2,14 +2,34 @@
 {{- if not (or .Values.accessKey ((.Values.externalSecrets).accessKey).enabled) }}
   {{- fail "accessKey is required. Set it in values.yaml, with --set accessKey=<value>, or source it from a secret manager with externalSecrets.accessKey.enabled=true" }}
 {{- end }}
-{{- if not .Values.environment }}
-  {{- fail "environment is required. Please set it in values.yaml or with --set environment=<value>" }}
-{{- end }}
-{{- range (((.Values.seaweedfs).allInOne).s3).createBuckets }}
+{{- if .Values.seaweedfs.enabled }}
+{{- range include "backline.buckets" . | fromJson }}
 {{- if .ttl }}
   {{- include "backline.validateTtl" .ttl }}
 {{- end }}
 {{- end }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Buckets from files/buckets.yaml, rendered as JSON. objectStorage.operationalRetention overrides the
+operational ttl; before 1.6.0 it was set in seaweedfs.allInOne.s3.createBuckets, still honoured.
+*/}}
+{{- define "backline.buckets" -}}
+{{- $buckets := .Files.Get "files/buckets.yaml" | fromYaml -}}
+{{- $ttl := (.Values.objectStorage).operationalRetention -}}
+{{- if not $ttl -}}
+{{- range (((.Values.seaweedfs).allInOne).s3).createBuckets -}}
+{{- if and (eq .name "operational") .ttl -}}{{- $ttl = .ttl -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if $ttl -}}{{- $_ := set $buckets.operational "ttl" (toString $ttl) -}}{{- end -}}
+{{- toJson $buckets -}}
+{{- end -}}
+
+{{/* Non-empty for environment=staging; any other value selects production. */}}
+{{- define "backline.isStaging" -}}
+{{- if eq (toString .Values.environment) "staging" -}}true{{- end -}}
 {{- end -}}
 
 {{/* Non-empty when a custom CA is supplied, inline or through an ExternalSecret. */}}
@@ -40,15 +60,15 @@ seccompProfile:
 {{- end -}}
 
 {{- define "logging.roleArn" -}}
-{{- if eq .Values.environment "production" -}}
-arn:aws:iam::314146328431:role/OnPremOtelShipRole
-{{- else -}}
+{{- if include "backline.isStaging" . -}}
 arn:aws:iam::580550010989:role/OnPremOtelShipRole
+{{- else -}}
+arn:aws:iam::314146328431:role/OnPremOtelShipRole
 {{- end -}}
 {{- end -}}
 
 {{- define "image.registry" -}}
-{{- if eq .Values.environment "staging" -}}
+{{- if include "backline.isStaging" . -}}
 580550010989.dkr.ecr.us-west-1.amazonaws.com
 {{- else -}}
 314146328431.dkr.ecr.us-east-1.amazonaws.com
@@ -56,7 +76,7 @@ arn:aws:iam::580550010989:role/OnPremOtelShipRole
 {{- end -}}
 
 {{- define "image.namePrefix" -}}
-{{- if ne .Values.environment "staging" -}}prod-{{- end -}}
+{{- if not (include "backline.isStaging" .) -}}prod-{{- end -}}
 {{- end -}}
 
 {{/*
@@ -87,7 +107,7 @@ exists yet or there is no cluster to look at (helm template, client dry-run).
 {{- define "gitproxy.image.name" -}}{{ include "image.namePrefix" . }}gitproxy{{- end -}}
 
 {{- define "region" -}}
-{{- if eq .Values.environment "staging" -}}
+{{- if include "backline.isStaging" . -}}
 us-west-1
 {{- else -}}
 us-east-1
@@ -95,10 +115,10 @@ us-east-1
 {{- end -}}
 
 {{- define "baseUrl" -}}
-{{- if eq .Values.environment "production" -}}
-https://app.backline.ai
-{{- else -}}
+{{- if include "backline.isStaging" . -}}
 https://staging-app.backline.ai
+{{- else -}}
+https://app.backline.ai
 {{- end -}}
 {{- end -}}
 
@@ -106,10 +126,108 @@ https://staging-app.backline.ai
 {{ printf "langfuse-config" | quote }}
 {{- end -}}
 
-{{- define "janitor.totalSteps" -}}
-{{- $steps := 5 -}}
-{{- if ((.Values.gitproxy).enabled) }}{{- $steps = add $steps 1 -}}{{- end -}}
-{{- $steps -}}
+{{/*
+Deployments the janitor restarts after writing LOG_STREAM_NAME (the tenant ID from the access key's
+JWT) to its log-stream ConfigMap; pods read it only at start.
+*/}}
+{{- define "janitor.restartDeployments" -}}
+worker{{ if .Values.gitproxy.enabled }} gitproxy{{ end }}
+{{- end -}}
+
+{{/* janitor.image.name / .tag are deprecated but still honoured so mirrored installs keep pulling. */}}
+{{- define "janitor.image" -}}
+{{- $image := .Values.janitor.image -}}
+{{ $image.registry }}/{{ $image.name | default "dtzar/helm-kubectl" }}:{{ $image.tag | default "3.16.1" }}
+{{- end -}}
+
+{{/*
+Collector image (args: root context, optional component). The deprecated *.otel.collector.image
+overrides are still honoured; gitproxy falls back to the worker's, which also covers a mirror.
+*/}}
+{{- define "adot.collectorImage" -}}
+{{- $image := "public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1" -}}
+{{- $components := list "worker" -}}
+{{- if eq (toString .component) "gitproxy" -}}{{- $components = list "worker" "gitproxy" -}}{{- end -}}
+{{- range $components -}}
+{{- with (((index $.Values .) | default dict).otel | default dict).collector -}}
+{{- with .image -}}{{- $image = . -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $image -}}
+{{- end -}}
+
+{{/*
+Notices for values removed in 1.6.0, as a JSON list for NOTES.txt. A value is reported only when
+it differs from its old default, so --reuse-values (which replays old defaults) stays quiet.
+*/}}
+{{- define "backline.deprecations" -}}
+{{- $msgs := list -}}
+{{- $v := .Values -}}
+{{- $env := toString (default "" $v.environment) -}}
+{{- if and $env (not (has $env (list "production" "staging"))) -}}
+{{- $msgs = append $msgs (printf "environment (%q) is no longer read: the chart always connects to Backline production. Remove it." $env) -}}
+{{- end -}}
+{{- $oldProbes := dict
+  "livenessProbe" (dict "httpGet" (dict "path" "/health" "port" 8080) "initialDelaySeconds" 10 "periodSeconds" 5)
+  "readinessProbe" (dict "httpGet" (dict "path" "/readiness" "port" 8080) "initialDelaySeconds" 5 "periodSeconds" 3) -}}
+{{- $collector := "public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1" -}}
+{{- range $c := list "worker" "gitproxy" -}}
+{{- $cfg := index $v $c | default dict -}}
+{{- with ($cfg.service | default dict).httpPort -}}
+{{- if ne (int .) 8080 -}}
+{{- $msgs = append $msgs (printf "%s.service.httpPort (%v) is no longer read: the service always listens on 8080. Remove it." $c .) -}}
+{{- end -}}
+{{- end -}}
+{{- range $p, $old := $oldProbes -}}
+{{- with index $cfg $p -}}
+{{- if ne (toJson .) (toJson $old) -}}
+{{- $msgs = append $msgs (printf "%s.%s is no longer read: the chart sets the probes. Remove it." $c $p) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $otel := $cfg.otel | default dict -}}
+{{- if and (hasKey $otel "enabled") (not $otel.enabled) -}}
+{{- $msgs = append $msgs (printf "%s.otel.enabled is no longer read: telemetry to Backline is always on. Remove it." $c) -}}
+{{- end -}}
+{{- with ($otel.collector | default dict).image -}}
+{{- if ne . $collector -}}
+{{- $msgs = append $msgs (printf "%s.otel.collector.image is deprecated. Its value (%s) is still used, but a future release will stop reading it." $c .) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $gp := $v.gitproxy | default dict -}}
+{{- if ($gp.adapter | default dict).skipCertVerification -}}
+{{- $msgs = append $msgs "gitproxy.adapter.skipCertVerification is no longer read: TLS to Backline is always verified. Trust an inspecting proxy through customCaCert instead." -}}
+{{- end -}}
+{{- $tuning := list
+  (list "gitproxy.adapter.maxRetries" ($gp.adapter | default dict).maxRetries "3")
+  (list "gitproxy.adapter.retryDelay" ($gp.adapter | default dict).retryDelay "1s")
+  (list "gitproxy.temporal.maxConcurrentActivities" ($gp.temporal | default dict).maxConcurrentActivities "20") -}}
+{{- range $tuning -}}
+{{- $value := index . 1 -}}
+{{- if and (not (kindIs "invalid" $value)) (ne (toString $value) (index . 2)) -}}
+{{- $msgs = append $msgs (printf "%s (%v) is no longer read: GitProxy's built-in default (%s) applies. Remove it." (index . 0) $value (index . 2)) -}}
+{{- end -}}
+{{- end -}}
+{{- $janitor := $v.janitor.image -}}
+{{- if and $janitor.name (ne $janitor.name "dtzar/helm-kubectl") -}}
+{{- $msgs = append $msgs (printf "janitor.image.name is deprecated. Its value (%s) is still used, but a future release will stop reading it." $janitor.name) -}}
+{{- end -}}
+{{- if and $janitor.tag (ne (toString $janitor.tag) "3.16.1") -}}
+{{- $msgs = append $msgs (printf "janitor.image.tag is deprecated. Its value (%v) is still used, but a future release will stop reading it." $janitor.tag) -}}
+{{- end -}}
+{{- $legacy := (((($v.seaweedfs | default dict).allInOne | default dict).s3 | default dict).createBuckets) -}}
+{{- $oldBuckets := list (dict "name" "operational" "ttl" "7d") (dict "name" "static-assets") -}}
+{{- if and $legacy (ne (toJson $legacy) (toJson $oldBuckets)) -}}
+{{- $legacyTtl := "" -}}
+{{- range $legacy -}}{{- if and (eq .name "operational") .ttl -}}{{- $legacyTtl = toString .ttl -}}{{- end -}}{{- end -}}
+{{- if and $legacyTtl (not ($v.objectStorage).operationalRetention) -}}
+{{- $msgs = append $msgs (printf "seaweedfs.allInOne.s3.createBuckets is deprecated. Its operational ttl (%s) is applied as objectStorage.operationalRetention; set that value and remove the list." $legacyTtl) -}}
+{{- else -}}
+{{- $msgs = append $msgs "seaweedfs.allInOne.s3.createBuckets is deprecated: the chart sets the buckets, and objectStorage.operationalRetention sets the operational window. Remove the list." -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $msgs -}}
 {{- end -}}
 
 {{- define "common.containerSecurityContext" -}}

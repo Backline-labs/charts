@@ -1,4 +1,4 @@
-{{- if ((.Values.gitproxy).enabled) }}
+{{- if .Values.gitproxy.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -7,7 +7,7 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - port: {{ .Values.gitproxy.service.httpPort }}
+    - port: 8080
       targetPort: http
       protocol: TCP
       name: http

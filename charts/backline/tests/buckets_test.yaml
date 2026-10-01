@@ -1,0 +1,53 @@
+suite: object storage buckets
+set:
+  accessKey: test-key
+tests:
+  - it: creates both buckets and a 7d window on operational
+    template: templates/seaweedfs-buckets-hook.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "s3.bucket.create -name operational"
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "s3.bucket.create -name static-assets"
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "-locationPrefix=/buckets/operational/ -ttl=7d -apply"
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "buckets/static-assets/ -ttl"
+
+  - it: runs after the subchart's bucket hook
+    template: templates/seaweedfs-buckets-hook.yaml
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "-4"
+
+  - it: applies operationalRetention
+    template: templates/seaweedfs-buckets-hook.yaml
+    set:
+      objectStorage.operationalRetention: 1y
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "-ttl=1y -apply"
+
+  - it: rejects a window weed cannot store
+    template: templates/secret.yaml
+    set:
+      objectStorage.operationalRetention: 365d
+    asserts:
+      - failedTemplate:
+          errorPattern: 'invalid object storage ttl "365d"'
+
+  - it: renders no bucket hooks without SeaweedFS
+    templates:
+      - templates/seaweedfs-buckets-hook.yaml
+      - templates/seaweedfs-retention-hook.yaml
+    set:
+      seaweedfs.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

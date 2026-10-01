@@ -5,9 +5,6 @@ metadata:
   namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
   labels:
     app: worker
-  annotations:
-    checksum/config: {{(include (print $.Template.BasePath "/worker-configmap.yaml") . | sha256sum) | quote }}
-    checksum/adapter-config: {{(include (print $.Template.BasePath "/adapter-configmap.yaml") . | sha256sum) | quote }}
 spec:
   replicas: {{ .Values.worker.replicaCount }}
   selector:
@@ -17,6 +14,11 @@ spec:
     metadata:
       labels:
         app: worker
+      # On the pod template so a ConfigMap change rolls the pods; they read it only at start.
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/worker-configmap.yaml") . | sha256sum | quote }}
+        checksum/adapter-config: {{ include (print $.Template.BasePath "/adapter-configmap.yaml") . | sha256sum | quote }}
+        checksum/adot-config: {{ include (print $.Template.BasePath "/adot-configmap.yaml") . | sha256sum | quote }}
     spec:
       serviceAccountName: worker
       imagePullSecrets:
@@ -35,12 +37,20 @@ spec:
             {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" false) | nindent 12 }}
           ports:
             - name: http
-              containerPort: {{ .Values.worker.service.httpPort }}
+              containerPort: 8080
               protocol: TCP
           livenessProbe:
-            {{- toYaml .Values.worker.livenessProbe | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
           readinessProbe:
-            {{- toYaml .Values.worker.readinessProbe | nindent 12 }}
+            httpGet:
+              path: /readiness
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 3
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
           envFrom:

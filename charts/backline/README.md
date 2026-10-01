@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.5.4
+**Chart Version:** 1.6.0
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -50,10 +50,10 @@ graph TB
     - [External Secrets Configuration](#external-secrets-configuration)
     - [Janitor Configuration](#janitor-configuration)
     - [Worker Configuration](#worker-configuration)
-      - [Worker OpenTelemetry Configuration](#worker-opentelemetry-configuration)
     - [GitProxy Configuration](#gitproxy-configuration)
     - [SeaweedFS Configuration](#seaweedfs-configuration)
       - [Object Retention](#object-retention)
+      - [External S3 Storage](#external-s3-storage)
     - [Pod Security](#pod-security)
     - [Resource Profiles](#resource-profiles)
   - [High Availability Recommendations](#high-availability-recommendations)
@@ -90,6 +90,12 @@ graph TB
     - [Minimal Installation](#minimal-installation)
     - [Advanced Configuration](#advanced-configuration)
   - [Upgrading](#upgrading)
+    - [Upgrading to 1.6.0](#upgrading-to-160)
+    - [Migrating from MinIO to SeaweedFS](#migrating-from-minio-to-seaweedfs)
+  - [GitOps Deployments](#gitops-deployments)
+    - [Flux](#flux)
+    - [Argo CD](#argo-cd)
+    - [helm template](#helm-template)
   - [Uninstall](#uninstall)
   - [Troubleshooting](#troubleshooting)
     - [Worker Pod Not Starting](#worker-pod-not-starting)
@@ -116,7 +122,7 @@ The chart deploys the following components:
 - **GitProxy** *(optional)*: Enables Backline to work with on-prem git servers (e.g., Bitbucket Data Center) by proxying git API operations. Runs on the customer network and makes outbound-only connections to Backline cloud. Disabled by default
 - **Janitor**: CronJob that performs automated maintenance tasks including JWT token refresh, Docker registry authentication updates, and worker/gitproxy image updates
 - **ADOT Collector**: Sidecar container for exporting logs, traces, and metrics to Backline AI cloud infrastructure
-- **SeaweedFS**: Object storage for static assets and operational data (deployed as a subchart)
+- **SeaweedFS**: Object storage for static assets and operational data (deployed as a subchart). Can be replaced by your own S3; see [External S3 Storage](#external-s3-storage)
 - **Coder Jobs**: Dynamically created Kubernetes Jobs for code execution (template embedded in worker ConfigMap)
 - **Dependabot Upgrader Jobs**: Dynamically created Kubernetes Jobs for dependency updates (template embedded in worker ConfigMap)
 
@@ -144,7 +150,6 @@ Create a `custom-values.yaml` file with your configuration:
 
 ```yaml
 accessKey: "your-secret-access-key"
-environment: "production"
 ```
 
 Install using the custom values:
@@ -163,7 +168,6 @@ helm install backline backline-ai/backline \
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------ |
 | `accessKey`         | Authentication key for API access. Not needed when sourced from a secret manager via `externalSecrets.accessKey`                                                                | Yes      | `""`         |
 | `namespaceOverride` | Override the default namespace                                                                                                                                                  | No       | `backline`   |
-| `environment`       | Backline AI SaaS endpoint environment (`staging` or `production`)                                                                                                               | Yes      | `production` |
 | `customCaCert`      | Base64-encoded PEM CA certificate(s) used for trusted communication with a self-hosted git host (internal/corporate CA). See "Trusting a self-hosted git server's internal CA". | No       | `""`         |
 
 ### Proxy Configuration
@@ -198,13 +202,11 @@ Source the chart's static secrets from a secret manager through the External Sec
 
 ### Janitor Configuration
 
-The Janitor component runs periodic maintenance tasks as a CronJob. It also keeps the Worker and GitProxy images on the newest published build, and `helm upgrade` preserves the tag it set, so leave `worker.image.tag` and `gitproxy.image.tag` empty unless you deliberately want to override it.
+The Janitor component runs periodic maintenance tasks as a CronJob. It also keeps the Worker and GitProxy images on the newest published build, and `helm upgrade` preserves the tag it set, so leave `worker.image.tag` and `gitproxy.image.tag` empty. A tag set there is not a pin: each `helm upgrade` applies it, then the Janitor moves on to the newest build. To update an image without waiting for the Janitor, see [Janitor Job Failing](#janitor-job-failing).
 
 | Parameter                           | Description        | Default              |
 | ----------------------------------- | ------------------ | -------------------- |
-| `janitor.image.registry`            | Container registry | `docker.io`          |
-| `janitor.image.name`                | Image name         | `dtzar/helm-kubectl` |
-| `janitor.image.tag`                 | Image tag          | `3.16.1`             |
+| `janitor.image.registry`            | Registry for the `dtzar/helm-kubectl` image; point at a mirror of `docker.io` if needed | `docker.io`          |
 | `janitor.image.pullPolicy`          | Image pull policy  | `IfNotPresent`       |
 | `janitor.resources.requests.cpu`    | CPU request        | `100m`               |
 | `janitor.resources.requests.memory` | Memory request     | `128Mi`              |
@@ -219,27 +221,17 @@ The Worker is the main application component.
 | ---------------------------------- | -------------------------------------------------- | ------------------------------------------------------ |
 | `worker.replicaCount`              | Number of worker replicas                          | `1`                                                    |
 | `worker.image.name`                | Image name                                         | `prod-runner`                                          |
-| `worker.image.tag`                 | Image tag. Leave empty: the Janitor tracks the newest published build and `helm upgrade` keeps the tag it set | `""`                                                   |
+| `worker.image.tag`                 | Image tag. Leave empty: the Janitor tracks the newest published build and `helm upgrade` keeps the tag it set. A set tag is applied on each upgrade, not pinned | `""`                                                   |
 | `worker.image.pullPolicy`          | Image pull policy                                  | `IfNotPresent`                                         |
-| `worker.service.httpPort`          | HTTP service port                                  | `8080`                                                 |
 | `worker.resources.requests.cpu`    | CPU request                                        | `500m`                                                 |
 | `worker.resources.requests.memory` | Memory request                                     | `1Gi`                                                  |
 | `worker.resources.limits.cpu`      | CPU limit                                          | `2000m`                                                |
 | `worker.resources.limits.memory`   | Memory limit                                       | `2Gi`                                                  |
-| `worker.livenessProbe`             | Liveness probe configuration                       | See values.yaml                                        |
-| `worker.readinessProbe`            | Readiness probe configuration                      | See values.yaml                                        |
-| `worker.env`                       | Additional environment variables                   | `[]`                                                   |
-| `worker.envFromSecrets`            | List of secrets to inject as environment variables | `[]`                                                   |
+| `worker.env`                       | Additional environment variables, e.g. the settings for [External S3 Storage](#external-s3-storage) | `[]`                                                   |
+| `worker.envFromSecrets`            | Secrets whose keys become environment variables, as a list of `{ref: <secret name>}`, e.g. external S3 credentials | `[]`                                                   |
 | `worker.nodeSelector`              | Node selector for pod assignment                   | `{}`                                                   |
 | `worker.tolerations`               | Tolerations for pod assignment                     | `[]`                                                   |
 | `worker.affinity`                  | Affinity rules for pod assignment                  | `{}`                                                   |
-
-#### Worker OpenTelemetry Configuration
-
-| Parameter                     | Description                      | Default                                                       |
-| ----------------------------- | -------------------------------- | ------------------------------------------------------------- |
-| `worker.otel.enabled`         | Enable OpenTelemetry             | `true`                                                        |
-| `worker.otel.collector.image` | Image used to run OTEL collector | `public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1` |
 
 ### GitProxy Configuration
 
@@ -250,18 +242,12 @@ GitProxy enables Backline to interact with on-prem git servers that are not acce
 | `gitproxy.enabled` | Enable GitProxy component | `false` |
 | `gitproxy.replicaCount` | Number of GitProxy replicas | `1` |
 | `gitproxy.image.name` | Image name | `prod-gitproxy` |
-| `gitproxy.image.tag` | Image tag. Leave empty: the Janitor tracks the newest published build and `helm upgrade` keeps the tag it set | `""` |
+| `gitproxy.image.tag` | Image tag. Leave empty: the Janitor tracks the newest published build and `helm upgrade` keeps the tag it set. A set tag is applied on each upgrade, not pinned | `""` |
 | `gitproxy.image.pullPolicy` | Image pull policy | `IfNotPresent` |
-| `gitproxy.adapter.skipCertVerification` | Skip TLS verification for adapter connection | `false` |
-| `gitproxy.adapter.maxRetries` | Max retries for adapter HTTP calls | `3` |
-| `gitproxy.adapter.retryDelay` | Delay between retries | `1s` |
-| `gitproxy.temporal.maxConcurrentActivities` | Max concurrent git operations | `20` |
 | `gitproxy.resources.requests.cpu` | CPU request | `250m` |
 | `gitproxy.resources.requests.memory` | Memory request | `256Mi` |
 | `gitproxy.resources.limits.cpu` | CPU limit | `500m` |
 | `gitproxy.resources.limits.memory` | Memory limit | `512Mi` |
-| `gitproxy.otel.enabled` | Enable OpenTelemetry | `true` |
-| `gitproxy.otel.collector.image` | OTEL collector image | `public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1` |
 | `gitproxy.nodeSelector` | Node selector for pod assignment | `{}` |
 | `gitproxy.tolerations` | Tolerations for pod assignment | `[]` |
 | `gitproxy.affinity` | Affinity rules for pod assignment | `{}` |
@@ -296,8 +282,9 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 | Parameter                                     | Description                                                                 | Default                         |
 | --------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------- |
 | `objectStorage.accessKey`                     | S3 access key (worker + SeaweedFS gateway)                                  | `backline`                      |
-| `objectStorage.secretKey`                     | S3 secret key (worker + SeaweedFS gateway)                                  | `backline-seaweedfs-password`   |
-| `seaweedfs.enabled`                           | Enable the bundled store (`false` → use external S3)                        | `true`                          |
+| `objectStorage.secretKey`                     | S3 secret key (worker + SeaweedFS gateway). Empty generates a random key on first install that upgrades keep; set it for Argo CD and `helm template` (see [GitOps Deployments](#gitops-deployments)) | `""` (generated)                |
+| `objectStorage.operationalRetention`          | How long objects in the `operational` bucket are kept; see [Object Retention](#object-retention) | `""` (`7d`)                     |
+| `seaweedfs.enabled`                           | Enable the bundled store (`false` → use your own S3, see [External S3 Storage](#external-s3-storage)) | `true`                          |
 | `seaweedfs.fullnameOverride`                  | Name prefix for SeaweedFS resources (used to build its service DNS)         | `seaweedfs`                     |
 | `seaweedfs.master.enabled`                    | Run a standalone master (the all-in-one pod provides one)                   | `false`                         |
 | `seaweedfs.volume.enabled`                    | Run standalone volume servers (the all-in-one pod provides one)             | `false`                         |
@@ -316,8 +303,6 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 | `seaweedfs.allInOne.s3.enabled`               | Expose the S3 gateway on the all-in-one pod                                 | `true`                          |
 | `seaweedfs.allInOne.s3.enableAuth`            | Require the `objectStorage` credentials on S3 requests                      | `true`                          |
 | `seaweedfs.allInOne.s3.existingConfigSecret`  | Secret holding the S3 identities (`seaweedfs_s3_config`)                    | `seaweedfs-s3-secret`           |
-| `seaweedfs.allInOne.s3.createBuckets`         | Buckets created by the post-install hook                                    | `operational`, `static-assets`  |
-| `seaweedfs.allInOne.s3.createBuckets[].ttl`   | Retention window for the bucket (e.g. `7d`)                                 | `7d` on `operational`           |
 | `seaweedfs.allInOne.resources`                | All-in-one pod resource requests/limits                                     | `100m`/`256Mi` … `500m`/`512Mi` |
 | `seaweedfs.allInOne.podSecurityContext`       | All-in-one pod security context (see [Pod Security](#pod-security))         | UID/GID/fsGroup `1000`          |
 | `seaweedfs.filer.podSecurityContext`          | Bucket-creation hook pod security context (read even with the filer off)    | UID/GID/fsGroup `1000`          |
@@ -327,18 +312,17 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 Objects written to the `operational` bucket are deleted 7 days later. `static-assets` has
 no expiry.
 
-To change the window, set `ttl` on the bucket — a count of 1-255 followed by `m`, `h`,
-`d`, `w`, `M` (month) or `y`, so a year is written `1y` and not `365d`:
+To change the window, set `objectStorage.operationalRetention` to a count of 1-255 followed by
+`m`, `h`, `d`, `w`, `M` (month) or `y`, so a year is written `1y` and not `365d`:
 
 ```yaml
-seaweedfs:
-  allInOne:
-    s3:
-      createBuckets:
-        - name: operational
-          ttl: 30d
-        - name: static-assets
+objectStorage:
+  operationalRetention: 30d
 ```
+
+The bucket names are fixed by the chart. Before 1.6.0 the window was set with `ttl` in
+`seaweedfs.allInOne.s3.createBuckets`; a `ttl` set there on `operational` is still honoured
+while `operationalRetention` is empty.
 
 The new window applies to objects written after the next `helm upgrade`; objects already
 stored keep the expiry they were given when they were written.
@@ -356,7 +340,61 @@ kubectl exec -n backline deploy/seaweedfs-all-in-one -- \
   sh -c "echo 's3.bucket.create -name operational' | weed shell"
 ```
 
-The `ttl` still applies to the re-created bucket.
+The retention window still applies to the re-created bucket.
+
+#### External S3 Storage
+
+Set `seaweedfs.enabled: false` to use AWS S3 or another S3-compatible store instead of the
+bundled SeaweedFS. The chart then deploys no object store and gives the Worker no storage
+settings, so supply them with `worker.env` and `worker.envFromSecrets`:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `AWS_REGION` | Region of the buckets. Required | unset |
+| `AWS_OPERATIONAL_BUCKET` | Bucket for job state and results | `operational` |
+| `AWS_STATIC_ASSETS_BUCKET` | Bucket for static assets | `static-assets` |
+| `AWS_DEV_ENDPOINT` | Endpoint of an S3-compatible store (MinIO, Ceph, ...), addressed path-style. Leave unset for AWS S3 | unset |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Static credentials, from a Secret referenced in `worker.envFromSecrets` | unset |
+
+Credentials are resolved by the standard AWS SDK chain, so on EKS you can skip the static
+keys and grant the `worker` service account access with an EKS Pod Identity association.
+
+```yaml
+seaweedfs:
+  enabled: false
+
+worker:
+  env:
+    - name: AWS_REGION
+      value: us-east-1
+    - name: AWS_OPERATIONAL_BUCKET
+      value: acme-backline-operational
+    - name: AWS_STATIC_ASSETS_BUCKET
+      value: acme-backline-static-assets
+    # S3-compatible store only:
+    # - name: AWS_DEV_ENDPOINT
+    #   value: https://s3.internal.example.com
+  envFromSecrets:
+    - ref: backline-s3-credentials
+```
+
+```bash
+kubectl create secret generic backline-s3-credentials -n backline \
+  --from-literal=AWS_ACCESS_KEY_ID='<access key>' \
+  --from-literal=AWS_SECRET_ACCESS_KEY='<secret key>'
+```
+
+Before switching over:
+
+- Create both buckets. The chart does not create them on an external store.
+- Grant `s3:GetObject`, `s3:PutObject` and `s3:DeleteObject` on `arn:aws:s3:::<bucket>/*`, and
+  `s3:ListBucket` on each bucket so a missing object reads as 404 rather than 403.
+- Add a lifecycle rule that expires objects in the operational bucket, 7 days to match the
+  bundled store. `objectStorage.operationalRetention` applies only to SeaweedFS.
+- Coder and Upgrader Jobs read and write through presigned URLs the Worker issues, so their
+  pods must reach the endpoint too.
+- An endpoint whose certificate is signed by an internal CA is trusted once that CA is in
+  `customCaCert`.
 
 ### Pod Security
 
@@ -486,7 +524,7 @@ spec:
 
 The Janitor is deliberately a singleton — `concurrencyPolicy: Forbid` prevents two runs from writing the same secrets. It needs no HA configuration: the CronJob schedules a fresh Job every minute, and a lost node simply moves the next run elsewhere.
 
-What it does need is monitoring. A Janitor that fails repeatedly is silent until the secrets it maintains expire, and then image pulls and Coder Job authentication start failing. Alert on the last successful run, or on the freshness annotation the Janitor stamps on each secret:
+What it does need is monitoring. A failing Janitor has no visible effect until the secrets it maintains expire, and then image pulls and Coder Job authentication start failing. A failed Worker or GitProxy image update also fails the Job, so alerting on the last successful run catches stalled image updates too. Alert on that, or on the freshness annotation the Janitor stamps on each secret:
 
 ```bash
 kubectl get cronjob janitor -n backline -o jsonpath='{.status.lastSuccessfulTime}'
@@ -499,7 +537,6 @@ Two Workers and two GitProxies, each pair spread across nodes:
 
 ```yaml
 accessKey: "your-secret-access-key"
-environment: "production"
 
 worker:
   replicaCount: 2
@@ -833,8 +870,6 @@ The secrets the Janitor maintains (`session-jwt`, `dockerconfig` and `langfuse-c
 Secrets are independent: enable only the ones you keep in a secret manager and set the rest inline. Example with every secret in one store, whichever provider backs it:
 
 ```yaml
-environment: "production"
-
 externalSecrets:
   secretStoreRef:
     name: backline-secrets
@@ -926,6 +961,8 @@ The Janitor CronJob automatically creates and rotates the following secrets:
 - Refresh frequency: Every 8 hours
 - Usage: Allows worker deployment to pull images from private ECR registry
 
+It also keeps the **`log-stream`** ConfigMap: `LOG_STREAM_NAME`, the tenant ID from the JWT, under which the ADOT collectors ship logs. It is not a setting. Pods do not start until it exists, so no logs ship without it; when it changes, the Janitor restarts the Worker (and GitProxy) so their collectors pick it up.
+
 ### Troubleshooting Secret Issues
 
 **ImagePullBackOff on worker pods:**
@@ -936,7 +973,7 @@ The Janitor CronJob automatically creates and rotates the following secrets:
 **AWS authentication failures in ADOT collector:**
 - Verify `session-jwt` secret exists: `kubectl get secret -n backline session-jwt`
 - Check JWT expiration and refresh: `kubectl describe secret -n backline session-jwt`
-- Ensure `accessKey` is valid for the resolved base URL (derived from `environment`)
+- Ensure `accessKey` is valid
 
 **Manual secret inspection:**
 ```bash
@@ -959,7 +996,6 @@ Minimal `values.yaml`:
 
 ```yaml
 accessKey: "your-secret-key"
-environment: "staging"
 ```
 
 ### Advanced Configuration
@@ -988,9 +1024,6 @@ worker:
     limits:
       cpu: "4000m"
       memory: "4Gi"
-  env:
-    - name: MODEL_NAME
-      value: "anthropic/claude-sonnet-4-20250514"
 
 seaweedfs:
   allInOne:
@@ -1005,8 +1038,6 @@ resourceProfiles:
     limits:
       cpu: "4000m"
       memory: "16Gi"
-
-environment: "production"
 
 # Enable GitProxy for on-prem git server connectivity
 gitproxy:
@@ -1034,6 +1065,17 @@ helm upgrade backline \
   --values updated-values.yaml
 ```
 
+### Upgrading to 1.6.0
+
+- `helm install` and `helm upgrade` print a **DEPRECATED VALUES** notice for every removed value your configuration still sets to something other than its old default. Values replayed from old defaults by `--reuse-values` stay silent.
+- These values are no longer read; remove them from your values file: `environment`, `worker.service.httpPort`, `gitproxy.service.httpPort`, the `livenessProbe` / `readinessProbe` and `otel.enabled` of `worker` and `gitproxy`, `gitproxy.adapter.*` and `gitproxy.temporal.*`.
+- `gitproxy.adapter.skipCertVerification` is gone. If you needed it to get past a TLS-inspecting proxy, supply that proxy's CA with `customCaCert` instead.
+- These values are deprecated but still used, so installs that pull through a mirror keep working: `worker.otel.collector.image`, `gitproxy.otel.collector.image` (GitProxy falls back to the Worker's), `janitor.image.name` and `janitor.image.tag`. A future release will stop reading them.
+- Existing installs keep their current SeaweedFS secret key; only new installs without `objectStorage.secretKey` get a generated one.
+- Buckets are created by the chart's own hook, and the `operational` retention window moves to `objectStorage.operationalRetention`. A `ttl` you set on `operational` in `seaweedfs.allInOne.s3.createBuckets` is still honoured while the new value is empty; the rest of that list is no longer read.
+- The Worker and GitProxy pods now roll whenever `helm upgrade` changes a ConfigMap they read, so the first upgrade to 1.6.0 restarts them.
+- The tenant ID logs ship under moves from `adapter-config` to the Janitor-owned `log-stream` ConfigMap. Pods started by the upgrade wait (`CreateContainerConfigError`) until the Janitor's next run creates it, within about a minute; the rolling update keeps the existing pods running meanwhile.
+
 ### Migrating from MinIO to SeaweedFS
 
 Releases before `1.3.0` bundled **MinIO** as the object store; `1.3.0+` replaces it with **SeaweedFS** (see [SeaweedFS Configuration](#seaweedfs-configuration)). Object data is **not** migrated — the `operational` / `static-assets` buckets hold regenerable cache, so the new store starts cold and repopulates. (To preserve objects, `mc mirror` / `rclone` from the old MinIO endpoint to the new SeaweedFS endpoint while both are reachable.)
@@ -1056,6 +1098,83 @@ kubectl -n backline delete pvc minio --ignore-not-found
 
 > **Stuck `Terminating` PV?** If the MinIO PV won't delete, the CSI provisioner that created it is likely no longer installed (e.g. the cluster switched its default StorageClass / EBS CSI driver), so the backing disk isn't reclaimed automatically. Find the disk via the PV's `.spec.csi.volumeHandle`, delete it at the cloud provider (e.g. `aws ec2 delete-volume --volume-id <id>`), then clear the finalizers: `kubectl patch pv <pv> -p '{"metadata":{"finalizers":null}}' --type=merge`.
 
+## GitOps Deployments
+
+The chart is built for Helm running against the cluster, and three of its mechanisms depend on that:
+
+- **Live state at render time.** `lookup` keeps what the Janitor or an earlier install set: the Worker and GitProxy image tags, the generated `objectStorage.secretKey`, and the `langfuse-config` Secret, which is rendered only while it does not exist.
+- **Janitor writes to chart objects.** It moves the `worker` and `gitproxy` container images and fills `langfuse-config`. The objects it creates itself (`session-jwt`, `dockerconfig`, the `log-stream` ConfigMap) are not part of the release.
+- **Hooks.** Post-install and post-upgrade Jobs create the buckets and sweep retention.
+
+A tool that renders without cluster access sees none of the live values, and a tool that corrects drift undoes the Janitor's changes. Configure your tool as below.
+
+### Flux
+
+Flux's helm-controller runs Helm install and upgrade inside the cluster, so `lookup` and hooks work as they do with the Helm CLI. Leave drift detection off, which is the default. If you enable it, ignore the fields the Janitor owns:
+
+```yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+spec:
+  driftDetection:
+    mode: enabled
+    ignore:
+      - paths: ["/spec/template/spec/containers/0/image"]
+        target:
+          kind: Deployment
+          name: worker
+      - paths: ["/spec/template/spec/containers/0/image"]
+        target:
+          kind: Deployment
+          name: gitproxy
+```
+
+### Argo CD
+
+Argo CD renders charts with `helm template`, so `lookup` returns nothing:
+
+- Set `objectStorage.secretKey` (or source it with `externalSecrets.objectStorage`). Left empty, every render generates a new key.
+- Every render carries the bootstrap image tag and placeholder `langfuse-config` values. Ignore those fields, and have syncs respect that, so a sync does not undo the Janitor:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: worker
+      jqPathExpressions:
+        - .spec.template.spec.containers[] | select(.name == "worker").image
+    - group: apps
+      kind: Deployment
+      name: gitproxy
+      jqPathExpressions:
+        - .spec.template.spec.containers[] | select(.name == "gitproxy").image
+    - kind: Secret
+      name: langfuse-config
+      jsonPointers:
+        - /data
+    # The SeaweedFS subchart regenerates this on every render; SFTP is disabled.
+    - kind: Secret
+      name: seaweedfs-sftp-secret
+      jsonPointers:
+        - /data
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
+```
+
+Argo CD runs the chart's post-install and post-upgrade hooks as PostSync hooks, so the bucket and retention Jobs run after every sync. Both are idempotent.
+
+### helm template
+
+Applying `helm template` output with `kubectl apply` has the Argo CD gaps and more: each apply resets the Janitor's fields, and hooks come out as plain Jobs, which a later apply cannot change because a Job's template is immutable. Prefer the Helm CLI, Flux or Argo CD. If you must render manifests yourself, render against the target cluster so `lookup` sees live state (Helm 3.13+), and set `objectStorage.secretKey`:
+
+```bash
+helm template backline backline-ai/backline -n backline -f values.yaml --dry-run=server > backline.yaml
+```
+
 ## Uninstall
 
 Remove the Helm release:
@@ -1066,10 +1185,11 @@ helm uninstall backline --namespace backline
 
 **Note:** The PersistentVolumeClaim may not be automatically deleted if not created by the chart.
 
-The Secrets `accesskey`, `custom-ca` and `seaweedfs-s3-secret` are kept on uninstall (they are marked `helm.sh/resource-policy: keep` so they can move between Helm and the External Secrets Operator), as are the Janitor-managed `session-jwt`, `dockerconfig` and `langfuse-config`. Delete the namespace, or the secrets explicitly, to remove them:
+The Secrets `accesskey`, `custom-ca` and `seaweedfs-s3-secret` are kept on uninstall (they are marked `helm.sh/resource-policy: keep` so they can move between Helm and the External Secrets Operator), as are the Janitor-managed `session-jwt`, `dockerconfig` and `langfuse-config` and its `log-stream` ConfigMap. Delete the namespace, or the objects explicitly, to remove them:
 
 ```bash
 kubectl delete secret -n backline accesskey custom-ca seaweedfs-s3-secret session-jwt dockerconfig langfuse-config --ignore-not-found
+kubectl delete configmap -n backline log-stream --ignore-not-found
 ```
 
 ## Troubleshooting
@@ -1079,7 +1199,7 @@ kubectl delete secret -n backline accesskey custom-ca seaweedfs-s3-secret sessio
 **Symptom:** Worker pod in `CrashLoopBackOff` or failing health checks.
 
 **Solution:**
-- Verify `accessKey` and `environment` are correct.
+- Verify `accessKey` is correct.
 - Check worker logs for authentication errors:
 
 ```bash
@@ -1088,13 +1208,14 @@ kubectl logs -n backline deployment/worker -c worker
 
 ### Janitor Job Failing
 
-**Symptom:** Janitor CronJob fails repeatedly.
+**Symptom:** Janitor Jobs fail repeatedly, or the Worker or GitProxy stays on an old image.
 
 **Solution:**
-- Check janitor logs:
+- Check the logs of a failed run. Each run retries up to 2 times, each in a new pod, and the last failed Job's pods are kept:
 
 ```bash
-kubectl logs -n backline job/janitor-<timestamp> -c janitor
+kubectl get pods -n backline --sort-by=.metadata.creationTimestamp | grep janitor
+kubectl logs -n backline <failed-janitor-pod>
 ```
 
 - Common issues:
@@ -1102,12 +1223,16 @@ kubectl logs -n backline job/janitor-<timestamp> -c janitor
   - Network connectivity: Ensure the janitor can reach the resolved base URL
   - Worker/GitProxy image update failed: the other steps still run, but the Job is marked failed; the `[4/N]` / `[6/N]` log section shows why (e.g. `failed to list tags`)
 - Each HTTP call times out after 2 minutes (30s to connect) and each run after 10 minutes, so a hung network call can't block later runs (the CronJob never overlaps runs).
-- A failed run retries up to 2 times, each in a new pod. The last failed Job's pods are kept, so their logs stay readable after the Job fails:
+
+**Updating an image without the Janitor:** set the newest published `<sha>-<ticks>` tag (ask Backline support for it) directly on the Deployment:
 
 ```bash
-kubectl get pods -n backline --sort-by=.metadata.creationTimestamp | grep janitor
-kubectl logs -n backline <failed-janitor-pod>
+IMAGE=$(kubectl get deploy worker -n backline -o jsonpath='{.spec.template.spec.containers[?(@.name=="worker")].image}')
+kubectl set image deployment/worker -n backline worker="${IMAGE%:*}:<sha>-<ticks>"
+# GitProxy: the same with deploy/gitproxy and container gitproxy
 ```
+
+`helm upgrade` keeps this tag as long as `worker.image.tag` / `gitproxy.image.tag` is empty. Use the newest tag: the Janitor only moves forward, so it replaces an older one on its next successful run.
 
 ### Image Pull Errors
 

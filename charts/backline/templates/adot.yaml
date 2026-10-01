@@ -28,14 +28,10 @@ true
   For Deployments: always include the sidecar regardless of K8s version.
 
   Parameters (passed via merge/dict):
-    - otelImage: OTEL collector image override (default: .Values.worker.otel.collector.image)
     - isJob: whether this is a Job (affects K8s version gating and restartPolicy)
+    - component: "gitproxy" to honour its deprecated collector image override
 */ -}}
 {{- $isJob := and (hasKey . "isJob") .isJob -}}
-{{- $otelImage := .Values.worker.otel.collector.image -}}
-{{- if hasKey . "otelImage" -}}
-  {{- $otelImage = .otelImage -}}
-{{- end -}}
 {{- $includeContainer := not $isJob -}}
 {{- if $isJob -}}
   {{- $includeContainer = include "adot.isK8sVersionGte129" . -}}
@@ -45,7 +41,7 @@ true
   {{- if $isJob }}
   restartPolicy: Always
   {{- end }}
-  image: {{ $otelImage }}
+  image: {{ include "adot.collectorImage" . }}
   args: ["--config=/etc/otel/config.yaml"]
   ports:
     - containerPort: 4317
@@ -67,10 +63,11 @@ true
       value: {{ include "logging.roleArn" . | quote }}
     - name: AWS_REGION
       value: {{ include "region" . | quote }}
+    # Tenant ID from the janitor's log-stream ConfigMap. Required, so pods wait for it instead of shipping logs without it.
     - name: LOG_STREAM_NAME
       valueFrom:
         configMapKeyRef:
-          name: adapter-config
+          name: log-stream
           key: LOG_STREAM_NAME
   {{- with include "backline.proxyEnv" . | trim }}
   {{- . | nindent 4 }}

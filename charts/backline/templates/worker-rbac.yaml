@@ -21,6 +21,10 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get", "list"]
+  # Events explain why a job's pods are not scheduling or starting.
+  - apiGroups: ["", "events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["create", "delete", "get", "list", "patch", "update"]

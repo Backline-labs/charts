@@ -1,0 +1,48 @@
+suite: first install without live state
+set:
+  accessKey: test-key
+tests:
+  - it: generates a 32-character SeaweedFS secret key used by both fields
+    template: templates/seaweedfs-secret.yaml
+    asserts:
+      - matchRegex:
+          path: stringData.secretKey
+          pattern: ^[A-Za-z0-9]{32}$
+
+  - it: leaves LOG_STREAM_NAME to the janitor rather than the chart
+    template: templates/adapter-configmap.yaml
+    asserts:
+      - notExists:
+          path: data.LOG_STREAM_NAME
+
+  - it: requires LOG_STREAM_NAME from the janitor-owned log-stream ConfigMap
+    template: templates/worker-deployment.yaml
+    capabilities:
+      majorVersion: 1
+      minorVersion: 30
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[?(@.name == "adot-collector")].env
+          content:
+            name: LOG_STREAM_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: log-stream
+                key: LOG_STREAM_NAME
+
+  - it: puts config checksums on the pod template so ConfigMap changes roll pods
+    templates:
+      - templates/worker-deployment.yaml
+      - templates/gitproxy-deployment.yaml
+    set:
+      gitproxy.enabled: true
+    asserts:
+      - exists:
+          path: spec.template.metadata.annotations["checksum/config"]
+      - exists:
+          path: spec.template.metadata.annotations["checksum/adapter-config"]
+      - exists:
+          path: spec.template.metadata.annotations["checksum/adot-config"]
+      - notExists:
+          path: metadata.annotations
+

@@ -1,0 +1,160 @@
+suite: deprecated values that are still honoured
+set:
+  accessKey: test-key
+capabilities:
+  majorVersion: 1
+  minorVersion: 30
+tests:
+  - it: uses the default collector image
+    template: templates/worker-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "adot-collector")].image
+          value: public.ecr.aws/aws-observability/aws-otel-collector:v0.45.1
+
+  - it: uses the worker's collector override for the worker
+    template: templates/worker-deployment.yaml
+    set:
+      worker.otel.collector.image: mirror.example.com/otel:1
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "adot-collector")].image
+          value: mirror.example.com/otel:1
+
+  - it: falls back to the worker's collector override for gitproxy
+    template: templates/gitproxy-deployment.yaml
+    set:
+      gitproxy.enabled: true
+      worker.otel.collector.image: mirror.example.com/otel:1
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "adot-collector")].image
+          value: mirror.example.com/otel:1
+
+  - it: prefers gitproxy's own collector override for gitproxy
+    template: templates/gitproxy-deployment.yaml
+    set:
+      gitproxy.enabled: true
+      worker.otel.collector.image: mirror.example.com/otel:1
+      gitproxy.otel.collector.image: mirror.example.com/otel:2
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "adot-collector")].image
+          value: mirror.example.com/otel:2
+
+  - it: passes the worker's collector override to Coder jobs
+    template: templates/worker-configmap.yaml
+    set:
+      worker.otel.collector.image: mirror.example.com/otel:1
+    asserts:
+      - matchRegex:
+          path: data.CODER_JOB_SPEC
+          pattern: '"image":"mirror\.example\.com/otel:1"'
+
+  - it: uses the default janitor image
+    template: templates/janitor-cronjob.yaml
+    asserts:
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].image
+          value: docker.io/dtzar/helm-kubectl:3.16.1
+
+  - it: honours janitor name and tag overrides in the CronJob and retention hook
+    templates:
+      - templates/janitor-cronjob.yaml
+      - templates/seaweedfs-retention-hook.yaml
+    set:
+      janitor.image.registry: registry.example.com
+      janitor.image.name: mirror/helm-kubectl
+      janitor.image.tag: 3.17.0
+    asserts:
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].image
+          value: registry.example.com/mirror/helm-kubectl:3.17.0
+        template: templates/janitor-cronjob.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com/mirror/helm-kubectl:3.17.0
+        template: templates/seaweedfs-retention-hook.yaml
+
+  - it: applies a legacy operational ttl to the bucket hook and the sweep
+    templates:
+      - templates/seaweedfs-buckets-hook.yaml
+      - templates/seaweedfs-retention-hook.yaml
+    set:
+      seaweedfs.allInOne.s3.createBuckets:
+        - {name: operational, ttl: 30d}
+        - {name: static-assets}
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "-locationPrefix=/buckets/operational/ -ttl=30d -apply"
+        template: templates/seaweedfs-buckets-hook.yaml
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: 'Sweeping /buckets/operational \(ttl 30d\)'
+        template: templates/seaweedfs-retention-hook.yaml
+
+  - it: prefers operationalRetention over a legacy ttl
+    template: templates/seaweedfs-buckets-hook.yaml
+    set:
+      objectStorage.operationalRetention: 14d
+      seaweedfs.allInOne.s3.createBuckets:
+        - {name: operational, ttl: 30d}
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "-ttl=14d -apply"
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "30d"
+
+  - it: ignores removed GitProxy tuning and skipCertVerification
+    template: templates/gitproxy-configmap.yaml
+    set:
+      gitproxy.enabled: true
+      gitproxy.adapter.skipCertVerification: true
+      gitproxy.adapter.maxRetries: 5
+      gitproxy.temporal.maxConcurrentActivities: 10
+    asserts:
+      - notExists:
+          path: data.ADAPTER_SKIP_CERT_VERIFICATION
+      - notExists:
+          path: data.ADAPTER_MAX_RETRIES
+      - notExists:
+          path: data.TEMPORAL_MAX_CONCURRENT_ACTIVITIES
+
+  - it: ignores a removed service port, probes and telemetry switch
+    template: templates/worker-deployment.yaml
+    set:
+      worker.service.httpPort: 9090
+      worker.livenessProbe: {httpGet: {path: /custom, port: 9090}}
+      worker.otel.enabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "worker")].ports[0].containerPort
+          value: 8080
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "worker")].livenessProbe.httpGet.path
+          value: /health
+
+  - it: renders no GitProxy objects by default
+    templates:
+      - templates/gitproxy-deployment.yaml
+      - templates/gitproxy-configmap.yaml
+      - templates/gitproxy-service.yaml
+      - templates/gitproxy-rbac.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders GitProxy when enabled
+    templates:
+      - templates/gitproxy-deployment.yaml
+      - templates/gitproxy-configmap.yaml
+      - templates/gitproxy-service.yaml
+      - templates/gitproxy-rbac.yaml
+    set:
+      gitproxy.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
