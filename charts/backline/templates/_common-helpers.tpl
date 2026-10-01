@@ -127,8 +127,8 @@ https://app.backline.ai
 {{- end -}}
 
 {{/*
-Deployments the janitor restarts after setting LOG_STREAM_NAME. It is empty on install, and the
-janitor keeps it equal to the access key's tenant claim, so it changes only on first run or a new key.
+Deployments the janitor restarts after writing LOG_STREAM_NAME, the tenant ID it reads from the
+access key's JWT. It is not a setting: empty until the janitor's first run, then fixed per access key.
 */}}
 {{- define "janitor.restartDeployments" -}}
 worker{{ if .Values.gitproxy.enabled }} gitproxy{{ end }}
