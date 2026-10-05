@@ -21,6 +21,21 @@ true
   readOnly: {{ if hasKey . "readOnly" }}{{ .readOnly }}{{ else }}true{{ end }}
 {{- end -}}
 
+{{- define "adot.logStreamEnv" -}}
+# Tenant ID from the janitor's log-stream ConfigMap. Required, so pods wait for it instead of shipping logs without it.
+- name: LOG_STREAM_NAME
+  valueFrom:
+    configMapKeyRef:
+      name: log-stream
+      key: LOG_STREAM_NAME
+{{- end -}}
+
+{{- define "adot.identityVolumeMount" -}}
+- name: {{ include "secretname.sessionjwt" . }}
+  mountPath: "/var/run/descope"
+  readOnly: true
+{{- end -}}
+
 {{- define "adot.sidecar" -}}
 {{- /*
   For Jobs: only include sidecar on K8s 1.29+ where native sidecars are supported.
@@ -63,12 +78,7 @@ true
       value: {{ include "logging.roleArn" . | quote }}
     - name: AWS_REGION
       value: {{ include "region" . | quote }}
-    # Tenant ID from the janitor's log-stream ConfigMap. Required, so pods wait for it instead of shipping logs without it.
-    - name: LOG_STREAM_NAME
-      valueFrom:
-        configMapKeyRef:
-          name: log-stream
-          key: LOG_STREAM_NAME
+    {{- include "adot.logStreamEnv" . | nindent 4 }}
   {{- with include "backline.proxyEnv" . | trim }}
   {{- . | nindent 4 }}
   {{- end }}
@@ -76,18 +86,57 @@ true
     - secretRef:
         name: {{ include "secretname.langfuse" . }}
   securityContext:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop:
-        - ALL
+    {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" true) | nindent 4 }}
   volumeMounts:
     {{- include "adot.logVolumeMount" . | nindent 4 }}
     - name: adot-config
       mountPath: /etc/otel/
-    - name: {{ include "secretname.sessionjwt" . }}
-      mountPath: "/var/run/descope"
-      readOnly: true
+    {{- include "adot.identityVolumeMount" . | nindent 4 }}
 {{- end }}
 {{- end -}}
 
+
+{{- /*
+  The SeaweedFS subchart renders this with its own values, so it can't read this chart's values.
+  The role, region and proxy settings come from the seaweedfs-adot-env ConfigMap instead.
+*/ -}}
+{{- define "adot.seaweedfsSidecar" -}}
+- name: adot-collector
+  image: {{ .Values.allInOne.collectorImage | default (include "adot.collectorImage" .) }}
+  args: ["--config=/etc/otel/config.yaml"]
+  env:
+    - name: AWS_WEB_IDENTITY_TOKEN_FILE
+      value: "/var/run/descope/token"
+    {{- include "adot.logStreamEnv" . | nindent 4 }}
+  envFrom:
+    - configMapRef:
+        name: seaweedfs-adot-env
+  securityContext:
+    {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" true) | nindent 4 }}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+      # Equal to the shared-logs sizeLimit, so the scheduler reserves node disk for the log files.
+      ephemeral-storage: 256Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  volumeMounts:
+    {{- include "adot.logVolumeMount" . | nindent 4 }}
+    - name: seaweedfs-adot
+      mountPath: /etc/otel/
+    {{- include "adot.identityVolumeMount" . | nindent 4 }}
+{{- end -}}
+
+{{- define "adot.seaweedfsVolumes" -}}
+- name: shared-logs
+  emptyDir:
+    sizeLimit: 256Mi
+- name: seaweedfs-adot
+  configMap:
+    name: seaweedfs-adot
+- name: {{ include "secretname.sessionjwt" . }}
+  secret:
+    secretName: {{ include "secretname.sessionjwt" . }}
+{{- end -}}

@@ -305,7 +305,10 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 | `seaweedfs.allInOne.s3.existingConfigSecret`  | Secret holding the S3 identities (`seaweedfs_s3_config`)                    | `seaweedfs-s3-secret`           |
 | `seaweedfs.allInOne.resources`                | All-in-one pod resource requests/limits                                     | `100m`/`256Mi` … `500m`/`512Mi` |
 | `seaweedfs.allInOne.podSecurityContext`       | All-in-one pod security context (see [Pod Security](#pod-security))         | UID/GID/fsGroup `1000`          |
+| `seaweedfs.allInOne.collectorImage`           | Log sidecar image. Required when `worker.otel.collector.image` is set; use the same mirror image | `""` (default collector image)  |
 | `seaweedfs.filer.podSecurityContext`          | Bucket-creation hook pod security context (read even with the filer off)    | UID/GID/fsGroup `1000`          |
+
+SeaweedFS logs are shipped to Backline by a collector sidecar in the all-in-one pod. Overriding `seaweedfs.allInOne.loggingOverrideLevel`, `sidecars`, `extraVolumes` or `extraVolumeMounts` stops them being shipped.
 
 #### Object Retention
 
@@ -961,7 +964,7 @@ The Janitor CronJob automatically creates and rotates the following secrets:
 - Refresh frequency: Every 8 hours
 - Usage: Allows worker deployment to pull images from private ECR registry
 
-It also keeps the **`log-stream`** ConfigMap: `LOG_STREAM_NAME`, the tenant ID from the JWT, under which the ADOT collectors ship logs. It is not a setting. Pods do not start until it exists, so no logs ship without it; when it changes, the Janitor restarts the Worker (and GitProxy) so their collectors pick it up.
+It also keeps the **`log-stream`** ConfigMap: `LOG_STREAM_NAME`, the tenant ID from the JWT, under which the ADOT collectors ship logs. It is not a setting. Pods do not start until it exists, so no logs ship without it; when it changes, the Janitor restarts the Worker (and GitProxy) so their collectors pick it up. The SeaweedFS pod also waits for it, but the Janitor does not restart that pod when the value changes, so its collector picks up a new value only when the pod next restarts.
 
 ### Troubleshooting Secret Issues
 

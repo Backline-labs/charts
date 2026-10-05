@@ -138,6 +138,13 @@ seaweedfs:
       limits:
         cpu: "500m"
         memory: "512Mi"
+    # weed reads logging flags only before `server`, and this is the only value the subchart places there.
+    loggingOverrideLevel: "1 -logdir=/var/log/backline -log_json -log_max_size_mb=20 -log_max_files=2"
+    sidecars: '{{ include "adot.seaweedfsSidecar" . }}'
+    extraVolumes: '{{ include "adot.seaweedfsVolumes" . }}'
+    extraVolumeMounts: '{{ include "adot.logVolumeMount" (dict "readOnly" false) }}'
+    # Log sidecar image for the SeaweedFS pod. Set it to the same image when worker.otel.collector.image is set.
+    collectorImage: ""
 
 # Janitor component
 janitor:

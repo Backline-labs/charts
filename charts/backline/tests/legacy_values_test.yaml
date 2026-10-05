@@ -16,6 +16,7 @@ tests:
     template: templates/worker-deployment.yaml
     set:
       worker.otel.collector.image: mirror.example.com/otel:1
+      seaweedfs.allInOne.collectorImage: mirror.example.com/otel:1
     asserts:
       - equal:
           path: spec.template.spec.initContainers[?(@.name == "adot-collector")].image
@@ -26,6 +27,7 @@ tests:
     set:
       gitproxy.enabled: true
       worker.otel.collector.image: mirror.example.com/otel:1
+      seaweedfs.allInOne.collectorImage: mirror.example.com/otel:1
     asserts:
       - equal:
           path: spec.template.spec.initContainers[?(@.name == "adot-collector")].image
@@ -36,6 +38,7 @@ tests:
     set:
       gitproxy.enabled: true
       worker.otel.collector.image: mirror.example.com/otel:1
+      seaweedfs.allInOne.collectorImage: mirror.example.com/otel:1
       gitproxy.otel.collector.image: mirror.example.com/otel:2
     asserts:
       - equal:
@@ -46,6 +49,7 @@ tests:
     template: templates/worker-configmap.yaml
     set:
       worker.otel.collector.image: mirror.example.com/otel:1
+      seaweedfs.allInOne.collectorImage: mirror.example.com/otel:1
     asserts:
       - matchRegex:
           path: data.CODER_JOB_SPEC
