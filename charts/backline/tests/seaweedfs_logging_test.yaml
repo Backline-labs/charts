@@ -76,6 +76,15 @@ tests:
           path: data["config.yaml"]
           pattern: 'log_group_name: "/backline/onprem"'
 
+  - it: keeps the collector off the filer's port
+    documentSelector:
+      path: metadata.name
+      value: seaweedfs-adot
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'telemetry:\s+metrics:\s+level: none'
+
   - it: renders nothing without SeaweedFS
     set:
       seaweedfs.enabled: false

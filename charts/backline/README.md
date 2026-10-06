@@ -1050,14 +1050,16 @@ gitproxy:
 
 ## Upgrading
 
-Upgrade an existing release with new values:
+Upgrade an existing release and keep the values you set before. On Helm 3.14 or later:
 
 ```bash
 helm upgrade backline \
   backline-ai/backline \
   --namespace backline \
-  --reuse-values
+  --reset-then-reuse-values
 ```
+
+`--reset-then-reuse-values` takes the defaults from the new chart version and applies the values you set on the previous release on top of them. On Helm older than 3.14, use `--reuse-values` instead. It also keeps the values you set, but it keeps the previous chart version's defaults as well, so defaults that the new version adds or changes do not apply.
 
 Or with a values file:
 
