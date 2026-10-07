@@ -1,0 +1,62 @@
+{{- if .Values.seaweedfs.enabled }}
+{{- $collectorImage := include "adot.collectorImage" . }}
+{{- $defaultCollectorImage := include "adot.collectorImage" (dict "Values" (dict)) }}
+{{- if and (ne $collectorImage $defaultCollectorImage) (not .Values.seaweedfs.allInOne.collectorImage) }}
+{{- fail "worker.otel.collector.image is set, so the collector image comes from a mirror. Set seaweedfs.allInOne.collectorImage to the same image; otherwise the SeaweedFS pod cannot pull its log sidecar and object storage stays unavailable." }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: seaweedfs-adot-env
+  namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+data:
+  AWS_ROLE_ARN: {{ include "logging.roleArn" . | quote }}
+  AWS_REGION: {{ include "region" . | quote }}
+  {{- range include "backline.proxyEnv" . | fromYamlArray }}
+  {{ .name }}: {{ .value | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: seaweedfs-adot
+  namespace: {{ default .Release.Namespace .Values.namespaceOverride | trunc 63 | trimSuffix "-" }}
+data:
+  config.yaml: |
+    receivers:
+      filelog:
+        include:
+          - /var/log/backline/weed.*.log.INFO.*
+        include_file_name: false
+        start_at: end
+        operators:
+          - type: json_parser
+          - type: time_parser
+            parse_from: attributes.ts
+            layout_type: gotime
+            layout: '2006-01-02T15:04:05.999999999Z07:00'
+          - type: add
+            field: attributes["log.file.name"]
+            value: seaweedfs.log
+    processors:
+      resource:
+        attributes:
+          - action: upsert
+            key: service.name
+            value: seaweedfs
+    exporters:
+      awscloudwatchlogs:
+        log_group_name: "/backline/onprem"
+        log_stream_name: "${env:LOG_STREAM_NAME}-logs"
+        log_retention: 30
+    service:
+      # The collector serves its own metrics on port 8888 by default, and the SeaweedFS filer in the same pod listens on 8888.
+      telemetry:
+        metrics:
+          level: none
+      pipelines:
+        logs:
+          receivers: [filelog]
+          processors: [resource]
+          exporters: [awscloudwatchlogs]
+{{- end }}

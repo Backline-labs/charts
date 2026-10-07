@@ -1,0 +1,108 @@
+suite: SeaweedFS log shipping
+templates:
+  - templates/seaweedfs-adot-configmap.yaml
+set:
+  accessKey: test-key
+tests:
+  - it: ships to production by default
+    documentSelector:
+      path: metadata.name
+      value: seaweedfs-adot-env
+    asserts:
+      - equal:
+          path: data.AWS_ROLE_ARN
+          value: arn:aws:iam::314146328431:role/OnPremOtelShipRole
+      - equal:
+          path: data.AWS_REGION
+          value: us-east-1
+
+  - it: ships to staging for environment staging
+    documentSelector:
+      path: metadata.name
+      value: seaweedfs-adot-env
+    set:
+      environment: staging
+    asserts:
+      - equal:
+          path: data.AWS_ROLE_ARN
+          value: arn:aws:iam::580550010989:role/OnPremOtelShipRole
+      - equal:
+          path: data.AWS_REGION
+          value: us-west-1
+
+  - it: sets no proxy variables without a proxy
+    documentSelector:
+      path: metadata.name
+      value: seaweedfs-adot-env
+    asserts:
+      - notExists:
+          path: data.HTTPS_PROXY
+      - notExists:
+          path: data.NO_PROXY
+
+  - it: passes the proxy to the collector
+    documentSelector:
+      path: metadata.name
+      value: seaweedfs-adot-env
+    set:
+      proxy.httpsProxy: http://proxy.example:3128
+      proxy.noProxy: .svc,10.0.0.0/8
+    asserts:
+      - equal:
+          path: data.HTTPS_PROXY
+          value: http://proxy.example:3128
+      - equal:
+          path: data.https_proxy
+          value: http://proxy.example:3128
+      - equal:
+          path: data.NO_PROXY
+          value: .svc,10.0.0.0/8
+      - equal:
+          path: data.no_proxy
+          value: .svc,10.0.0.0/8
+
+  - it: reads only the INFO log files and labels them as seaweedfs.log
+    documentSelector:
+      path: metadata.name
+      value: seaweedfs-adot
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: '/var/log/backline/weed\.\*\.log\.INFO\.\*'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'seaweedfs\.log'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'log_group_name: "/backline/onprem"'
+
+  - it: keeps the collector off the filer's port
+    documentSelector:
+      path: metadata.name
+      value: seaweedfs-adot
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'telemetry:\s+metrics:\s+level: none'
+
+  - it: renders nothing without SeaweedFS
+    set:
+      seaweedfs.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: requires a SeaweedFS collector image when the collector image is mirrored
+    set:
+      worker.otel.collector.image: mirror.example/otel:1
+    asserts:
+      - failedTemplate:
+          errorPattern: 'Set seaweedfs\.allInOne\.collectorImage to the same image'
+
+  - it: renders with a mirrored image for both collectors
+    set:
+      worker.otel.collector.image: mirror.example/otel:1
+      seaweedfs.allInOne.collectorImage: mirror.example/otel:1
+    asserts:
+      - hasDocuments:
+          count: 2
