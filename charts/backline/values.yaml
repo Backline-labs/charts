@@ -134,10 +134,10 @@ seaweedfs:
     resources:
       requests:
         cpu: "100m"
-        memory: "256Mi"
+        memory: "512Mi"
       limits:
         cpu: "500m"
-        memory: "512Mi"
+        memory: "1Gi"
     # weed reads logging flags only before `server`, and this is the only value the subchart places there.
     loggingOverrideLevel: "1 -logdir=/var/log/backline -log_json -log_max_size_mb=20 -log_max_files=2"
     sidecars: '{{ include "adot.seaweedfsSidecar" . }}'
