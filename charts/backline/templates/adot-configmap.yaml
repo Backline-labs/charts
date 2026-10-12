@@ -43,6 +43,9 @@ data:
           - action: insert
             from_attribute: k8s.container.name
             key: service.name
+          - action: insert
+            key: k8s.pod.name
+            value: ${env:POD_NAME}
     extensions:
       sigv4auth:
         region: "us-east-1"

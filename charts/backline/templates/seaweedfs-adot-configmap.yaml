@@ -44,6 +44,9 @@ data:
           - action: upsert
             key: service.name
             value: seaweedfs
+          - action: insert
+            key: k8s.pod.name
+            value: ${env:POD_NAME}
     exporters:
       awscloudwatchlogs:
         log_group_name: "/backline/onprem"
