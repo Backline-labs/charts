@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.6.2
+**Chart Version:** 1.6.3
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -121,7 +121,7 @@ The chart deploys the following components:
 - **Worker**: Main application handling code analysis workloads, AI interactions, and job orchestration
 - **GitProxy** *(optional)*: Enables Backline to work with on-prem git servers (e.g., Bitbucket Data Center) by proxying git API operations. Runs on the customer network and makes outbound-only connections to Backline cloud. Disabled by default
 - **Janitor**: CronJob that performs automated maintenance tasks including JWT token refresh, Docker registry authentication updates, and worker/gitproxy image updates
-- **ADOT Collector**: Sidecar container for exporting logs, traces, and metrics to Backline AI cloud infrastructure
+- **ADOT Collector**: Sidecar container for exporting logs, traces, and metrics to Backline AI cloud infrastructure. Each log record carries the name of the pod that wrote it (`k8s.pod.name`)
 - **SeaweedFS**: Object storage for static assets and operational data (deployed as a subchart). Can be replaced by your own S3; see [External S3 Storage](#external-s3-storage)
 - **Coder Jobs**: Dynamically created Kubernetes Jobs for code execution (template embedded in worker ConfigMap)
 - **Dependabot Upgrader Jobs**: Dynamically created Kubernetes Jobs for dependency updates (template embedded in worker ConfigMap)

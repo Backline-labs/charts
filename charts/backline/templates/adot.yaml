@@ -72,6 +72,10 @@ true
       valueFrom:
         fieldRef:
           fieldPath: status.podIP
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
     - name: AWS_WEB_IDENTITY_TOKEN_FILE
       value: "/var/run/descope/token"
     - name: AWS_ROLE_ARN
@@ -107,6 +111,10 @@ true
   env:
     - name: AWS_WEB_IDENTITY_TOKEN_FILE
       value: "/var/run/descope/token"
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
     {{- include "adot.logStreamEnv" . | nindent 4 }}
   envFrom:
     - configMapRef:

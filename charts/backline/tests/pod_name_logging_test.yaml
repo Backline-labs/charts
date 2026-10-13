@@ -1,0 +1,38 @@
+suite: pod name on shipped logs
+set:
+  accessKey: test-key
+capabilities:
+  majorVersion: 1
+  minorVersion: 30
+tests:
+  - it: gives the collector its pod name
+    templates:
+      - templates/worker-deployment.yaml
+      - templates/gitproxy-deployment.yaml
+    set:
+      gitproxy.enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[?(@.name == "adot-collector")].env
+          content:
+            name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+
+  - it: adds the pod name to log records unless one is already set
+    template: templates/adot-configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'action: insert\s+key: k8s\.pod\.name\s+value: \$\{env:POD_NAME\}'
+
+  - it: adds the pod name to SeaweedFS log records
+    template: templates/seaweedfs-adot-configmap.yaml
+    documentSelector:
+      path: metadata.name
+      value: seaweedfs-adot
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'action: insert\s+key: k8s\.pod\.name\s+value: \$\{env:POD_NAME\}'
