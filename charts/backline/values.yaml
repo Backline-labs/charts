@@ -138,7 +138,8 @@ seaweedfs:
       limits:
         cpu: "500m"
         memory: "4Gi"
-    # Memory grows with the bytes being uploaded, so cap the data in flight; further uploads wait their turn.
+    # Internal: memory grows with the bytes being uploaded, so cap the data in flight (further uploads wait their turn),
+    # and keep the Go heap under the limit. The chart fails to render if an override drops either.
     extraArgs:
       - "-s3.concurrentUploadLimitMB=256"
     extraEnvironmentVars:

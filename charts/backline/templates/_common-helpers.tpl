@@ -8,7 +8,24 @@
   {{- include "backline.validateTtl" .ttl }}
 {{- end }}
 {{- end }}
+{{- include "backline.validateSeaweedfsMemoryGuards" .Values.seaweedfs.allInOne }}
 {{- end }}
+{{- end -}}
+
+{{/* The upload cap and GOMEMLIMIT keep upload bursts from OOM-killing SeaweedFS; overrides must keep them. */}}
+{{- define "backline.validateSeaweedfsMemoryGuards" -}}
+{{- if .enabled -}}
+{{- $capped := false -}}
+{{- range .extraArgs -}}
+{{- if regexMatch "^-s3\\.concurrentUploadLimitMB=[1-9][0-9]*$" (toString .) -}}{{- $capped = true -}}{{- end -}}
+{{- end -}}
+{{- if not $capped -}}
+{{- fail "seaweedfs.allInOne.extraArgs must include -s3.concurrentUploadLimitMB=<MiB> (default 256), which keeps upload bursts from exhausting the SeaweedFS pod's memory. Keep it alongside any flags you add." -}}
+{{- end -}}
+{{- if not (get (.extraEnvironmentVars | default dict) "GOMEMLIMIT") -}}
+{{- fail "seaweedfs.allInOne.extraEnvironmentVars must keep GOMEMLIMIT, which keeps SeaweedFS's memory below its container limit. Keep it alongside any variables you add." -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{/*

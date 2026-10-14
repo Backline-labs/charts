@@ -304,15 +304,12 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 | `seaweedfs.allInOne.s3.enableAuth`            | Require the `objectStorage` credentials on S3 requests                      | `true`                          |
 | `seaweedfs.allInOne.s3.existingConfigSecret`  | Secret holding the S3 identities (`seaweedfs_s3_config`)                    | `seaweedfs-s3-secret`           |
 | `seaweedfs.allInOne.resources`                | All-in-one pod resource requests/limits                                     | `100m`/`512Mi` … `500m`/`4Gi`   |
-| `seaweedfs.allInOne.extraArgs`                | Extra `weed server` flags; the default caps the S3 upload data in flight    | `["-s3.concurrentUploadLimitMB=256"]` |
-| `seaweedfs.allInOne.extraEnvironmentVars`     | Extra environment variables; the default sets `GOMEMLIMIT` from the memory limit | `GOMEMLIMIT`: 90% of the limit |
 | `seaweedfs.allInOne.podSecurityContext`       | All-in-one pod security context (see [Pod Security](#pod-security))         | UID/GID/fsGroup `1000`          |
 | `seaweedfs.allInOne.collectorImage`           | Log sidecar image. Required when `worker.otel.collector.image` is set; use the same mirror image | `""` (default collector image)  |
 | `seaweedfs.filer.podSecurityContext`          | Bucket-creation hook pod security context (read even with the filer off)    | UID/GID/fsGroup `1000`          |
 
 SeaweedFS logs are shipped to Backline by a collector sidecar in the all-in-one pod. Overriding `seaweedfs.allInOne.loggingOverrideLevel`, `sidecars`, `extraVolumes` or `extraVolumeMounts` stops them being shipped.
 
-Uploads in bursts drive the all-in-one pod's memory use. The default `extraArgs` caps the S3 upload data in flight at 256 MiB (further uploads wait until it drops; a single larger upload still proceeds on its own), and `GOMEMLIMIT` makes SeaweedFS reclaim memory before it reaches the container limit. Setting `extraArgs` replaces the default list, so carry the flag over. `GOMEMLIMIT` follows `seaweedfs.allInOne.resources.limits.memory` when it is a whole number with an optional `Ki`, `Mi`, `Gi`, `Ti`, `k`, `M`, `G` or `T` suffix; otherwise it is left unset.
 
 #### Object Retention
 
