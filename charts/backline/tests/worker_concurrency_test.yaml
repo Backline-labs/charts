@@ -8,3 +8,10 @@ tests:
       - equal:
           path: data.TEMPORAL_MAX_CONCURRENT_ACTIVITIES
           value: "10"
+
+  - it: caps the parallel work inside one activity
+    template: templates/worker-configmap.yaml
+    asserts:
+      - equal:
+          path: data.THREAD_POOL_SIZE
+          value: "4"
