@@ -1,0 +1,53 @@
+suite: SeaweedFS memory guards
+templates:
+  - templates/secret.yaml
+set:
+  accessKey: test-key
+tests:
+  - it: renders with the default upload cap and GOMEMLIMIT
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: accepts extra flags that keep the upload cap
+    set:
+      seaweedfs.allInOne.extraArgs:
+        - "-s3.concurrentUploadLimitMB=512"
+        - "-volume.index=leveldb"
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: rejects extra flags that drop the upload cap
+    set:
+      seaweedfs.allInOne.extraArgs:
+        - "-volume.index=leveldb"
+    asserts:
+      - failedTemplate:
+          errorPattern: 'seaweedfs\.allInOne\.extraArgs must include -s3\.concurrentUploadLimitMB'
+
+  - it: rejects a zero upload cap, which SeaweedFS treats as unlimited
+    set:
+      seaweedfs.allInOne.extraArgs:
+        - "-s3.concurrentUploadLimitMB=0"
+    asserts:
+      - failedTemplate:
+          errorPattern: 'must include -s3\.concurrentUploadLimitMB'
+
+  - it: keeps GOMEMLIMIT when other variables are added
+    set:
+      seaweedfs.allInOne.extraEnvironmentVars.TZ: UTC
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: rejects removing GOMEMLIMIT
+    set:
+      seaweedfs.allInOne.extraEnvironmentVars.GOMEMLIMIT: null
+    asserts:
+      - failedTemplate:
+          errorPattern: 'must keep GOMEMLIMIT'
+
+  - it: skips the guards without SeaweedFS
+    set:
+      seaweedfs.enabled: false
+      seaweedfs.allInOne.extraArgs: []
+    asserts:
+      - notFailedTemplate: {}

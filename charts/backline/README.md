@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.6.3
+**Chart Version:** 1.6.4
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -303,12 +303,13 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 | `seaweedfs.allInOne.s3.enabled`               | Expose the S3 gateway on the all-in-one pod                                 | `true`                          |
 | `seaweedfs.allInOne.s3.enableAuth`            | Require the `objectStorage` credentials on S3 requests                      | `true`                          |
 | `seaweedfs.allInOne.s3.existingConfigSecret`  | Secret holding the S3 identities (`seaweedfs_s3_config`)                    | `seaweedfs-s3-secret`           |
-| `seaweedfs.allInOne.resources`                | All-in-one pod resource requests/limits                                     | `100m`/`512Mi` … `500m`/`1Gi`   |
+| `seaweedfs.allInOne.resources`                | All-in-one pod resource requests/limits                                     | `100m`/`512Mi` … `500m`/`4Gi`   |
 | `seaweedfs.allInOne.podSecurityContext`       | All-in-one pod security context (see [Pod Security](#pod-security))         | UID/GID/fsGroup `1000`          |
 | `seaweedfs.allInOne.collectorImage`           | Log sidecar image. Required when `worker.otel.collector.image` is set; use the same mirror image | `""` (default collector image)  |
 | `seaweedfs.filer.podSecurityContext`          | Bucket-creation hook pod security context (read even with the filer off)    | UID/GID/fsGroup `1000`          |
 
 SeaweedFS logs are shipped to Backline by a collector sidecar in the all-in-one pod. Overriding `seaweedfs.allInOne.loggingOverrideLevel`, `sidecars`, `extraVolumes` or `extraVolumeMounts` stops them being shipped.
+
 
 #### Object Retention
 
