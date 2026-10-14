@@ -1,0 +1,10 @@
+suite: worker concurrency
+set:
+  accessKey: test-key
+tests:
+  - it: caps the activities one worker runs at once
+    template: templates/worker-configmap.yaml
+    asserts:
+      - equal:
+          path: data.TEMPORAL_MAX_CONCURRENT_ACTIVITIES
+          value: "10"
