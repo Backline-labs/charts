@@ -187,7 +187,7 @@ worker:
   affinity: {}
   # Fetch public packages through your configured package registry too, not
   # only private ones. Enable when the cluster can't reach public registries
-  # such as Maven Central reliably.
+  # such as Maven Central reliably. Applies to Java, Go and Python packages.
   alwaysUsePackageRegistry: false
 
 # ============================================================================

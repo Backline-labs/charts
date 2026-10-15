@@ -232,7 +232,7 @@ The Worker is the main application component.
 | `worker.nodeSelector`              | Node selector for pod assignment                   | `{}`                                                   |
 | `worker.tolerations`               | Tolerations for pod assignment                     | `[]`                                                   |
 | `worker.affinity`                  | Affinity rules for pod assignment                  | `{}`                                                   |
-| `worker.alwaysUsePackageRegistry`  | Fetch public packages through your configured package registry too, not only private ones. Enable when the cluster can't reach public registries such as Maven Central reliably | `false` |
+| `worker.alwaysUsePackageRegistry`  | Fetch public packages through your configured package registry too, not only private ones. Enable when the cluster can't reach public registries such as Maven Central reliably. Applies to Java, Go and Python packages | `false` |
 
 ### GitProxy Configuration
 
