@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.6.4
+**Chart Version:** 1.6.5
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -232,6 +232,7 @@ The Worker is the main application component.
 | `worker.nodeSelector`              | Node selector for pod assignment                   | `{}`                                                   |
 | `worker.tolerations`               | Tolerations for pod assignment                     | `[]`                                                   |
 | `worker.affinity`                  | Affinity rules for pod assignment                  | `{}`                                                   |
+| `worker.alwaysUsePackageRegistry`  | Fetch public packages through your configured package registry too, not only private ones. Enable when the cluster can't reach public registries such as Maven Central reliably. Applies to Java (Maven) packages; packages in other languages are still fetched from their public registries | `false` |
 
 ### GitProxy Configuration
 
