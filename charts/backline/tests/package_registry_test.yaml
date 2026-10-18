@@ -1,0 +1,19 @@
+suite: package registry routing
+set:
+  accessKey: test-key
+tests:
+  - it: fetches public packages from public registries by default
+    template: templates/worker-configmap.yaml
+    asserts:
+      - equal:
+          path: data.CODER_ALWAYS_USE_PACKAGE_REGISTRY
+          value: "false"
+
+  - it: can fetch public packages through the configured package registry
+    template: templates/worker-configmap.yaml
+    set:
+      worker.alwaysUsePackageRegistry: true
+    asserts:
+      - equal:
+          path: data.CODER_ALWAYS_USE_PACKAGE_REGISTRY
+          value: "true"

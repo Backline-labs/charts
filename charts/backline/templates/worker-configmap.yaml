@@ -11,6 +11,7 @@ data:
   TEMPORAL_MAX_CONCURRENT_ACTIVITIES: "10"
   # Caps the parallel work inside one activity.
   THREAD_POOL_SIZE: "4"
+  CODER_ALWAYS_USE_PACKAGE_REGISTRY: {{ .Values.worker.alwaysUsePackageRegistry | default false | toString | quote }}
   LOG_FILE_PATH: {{ printf "%s/worker.log" (include "logging.dir" .) | quote }}
   LITELLM_SERVICE_URL: {{ printf "%s/api/litellm/v1/proxy" (include "baseUrl" .) | quote }}
   {{- if .Values.seaweedfs.enabled }}
