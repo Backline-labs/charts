@@ -47,3 +47,14 @@ tests:
       - matchRegex:
           path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
           pattern: "Worker image updater[\\s\\S]*GitProxy image updater"
+
+  # Contract with cd-gitops: release candidates are pushed to prod ECR as <tag>-rc and released
+  # only after the prod deploy is healthy (release-onprem-images.yaml). Accepting any other tag
+  # shape here would ship unreleased images to every install.
+  - it: picks only tags ending in digits, so -rc release candidates are never deployed
+    set:
+      gitproxy.enabled: true
+    asserts:
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: '(?s)Worker image updater.*select\(test\("-\[0-9\]\+\$"\)\).*GitProxy image updater.*select\(test\("-\[0-9\]\+\$"\)\)'
