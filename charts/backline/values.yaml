@@ -1,5 +1,8 @@
 # Global configuration
 accessKey: ""
+# The Backline address this installation connects to. Set it only when Backline gives you a
+# dedicated address, e.g. https://customerx.backline.ai; empty uses the default address.
+baseUrl: ""
 namespaceOverride: "backline"
 
 # ============================================================================

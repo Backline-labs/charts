@@ -167,8 +167,11 @@ helm install backline backline-ai/backline \
 | Parameter           | Description                                                                                                                                                                     | Required | Default      |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------ |
 | `accessKey`         | Authentication key for API access. Not needed when sourced from a secret manager via `externalSecrets.accessKey`                                                                | Yes      | `""`         |
+| `baseUrl`           | The Backline address the installation connects to. Set it only to a dedicated address Backline gives you (see below); empty uses the default Backline address.                  | No       | `""`         |
 | `namespaceOverride` | Override the default namespace                                                                                                                                                  | No       | `backline`   |
 | `customCaCert`      | Base64-encoded PEM CA certificate(s) used for trusted communication with a self-hosted git host (internal/corporate CA). See "Trusting a self-hosted git server's internal CA". | No       | `""`         |
+
+`baseUrl` re-points everything the installation sends to Backline: the Worker and GitProxy connections, AI model calls and the Janitor's credential refresh. Changing it restarts the Worker and GitProxy. It must be an address in the same Backline environment as the rest of the installation, which pulls its images and ships its logs there; the chart refuses to render when `baseUrl` is another environment's default address. For example: `--set baseUrl=https://customerx.backline.ai`.
 
 ### Proxy Configuration
 
@@ -591,6 +594,8 @@ DNS resolution is **required** for FQDN-based egress rules to function.
 
 ### Backline
 All pods need access to the Backline AI SaaS endpoint. Please reach out to your Backline contact person to obtain the list of relevant IPs for your tenant.
+
+With a dedicated address (`baseUrl`), pods connect to that host on port 443, and Backline accepts connections to it only from the IP ranges registered for your tenant, so those ranges must include your cluster's egress IPs.
 
 ### Package Registries
 
