@@ -147,14 +147,16 @@ us-east-1
 {{- end -}}
 
 {{/*
-The Backline address for adapter, LLM and janitor calls; an explicit baseUrl wins. It must stay in the
-environment's Backline: registry, region and IAM roles still follow environment, so a cross-environment
-pair would fetch pull secrets and tokens that don't match them.
+The Backline address for adapter, LLM and janitor calls; an explicit baseUrl (a bare https origin: the access
+key is posted to it) wins. It must stay in the environment's Backline: registry, region and IAM roles still
+follow environment, so a cross-environment pair would fetch pull secrets and tokens that don't match them.
 */}}
 {{- define "baseUrl" -}}
 {{- $explicit := trimSuffix "/" (default "" .Values.baseUrl) -}}
 {{- if $explicit -}}
-{{- if and (include "backline.isStaging" .) (eq $explicit "https://app.backline.ai") -}}
+{{- if not (regexMatch "^https://[^/:?#@\\s]+$" $explicit) -}}
+{{- fail (printf "baseUrl (%s) must be an https:// address with no port or path, e.g. https://customerx.backline.ai" $explicit) -}}
+{{- else if and (include "backline.isStaging" .) (eq $explicit "https://app.backline.ai") -}}
 {{- fail (printf "baseUrl (%s) is Backline production but environment is staging; set them to the same environment" $explicit) -}}
 {{- else if and (not (include "backline.isStaging" .)) (eq $explicit "https://staging-app.backline.ai") -}}
 {{- fail (printf "baseUrl (%s) is Backline staging but environment is production; set them to the same environment" $explicit) -}}

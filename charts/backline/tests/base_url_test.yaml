@@ -135,6 +135,38 @@ tests:
         template: templates/worker-deployment.yaml
 
   # Helm stops at the first template that includes the helper; worker-deployment renders before the ConfigMaps.
+  - it: rejects an address without a scheme
+    template: templates/worker-deployment.yaml
+    set:
+      baseUrl: customerx.backline.ai
+    asserts:
+      - failedTemplate:
+          errorPattern: 'baseUrl \(customerx\.backline\.ai\) must be an https:// address'
+
+  - it: rejects a plain http address, which would send the access key unencrypted
+    template: templates/worker-deployment.yaml
+    set:
+      baseUrl: http://customerx.backline.ai
+    asserts:
+      - failedTemplate:
+          errorPattern: 'baseUrl \(http://customerx\.backline\.ai\) must be an https:// address'
+
+  - it: rejects an address with a path
+    template: templates/worker-deployment.yaml
+    set:
+      baseUrl: https://customerx.backline.ai/api/adapter/v1
+    asserts:
+      - failedTemplate:
+          errorPattern: 'must be an https:// address with no port or path'
+
+  - it: rejects an address with a port
+    template: templates/worker-deployment.yaml
+    set:
+      baseUrl: https://customerx.backline.ai:8443
+    asserts:
+      - failedTemplate:
+          errorPattern: 'must be an https:// address with no port or path'
+
   - it: rejects the production address with environment staging
     template: templates/worker-deployment.yaml
     set:

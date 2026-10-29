@@ -171,7 +171,7 @@ helm install backline backline-ai/backline \
 | `namespaceOverride` | Override the default namespace                                                                                                                                                  | No       | `backline`   |
 | `customCaCert`      | Base64-encoded PEM CA certificate(s) used for trusted communication with a self-hosted git host (internal/corporate CA). See "Trusting a self-hosted git server's internal CA". | No       | `""`         |
 
-`baseUrl` re-points everything the installation sends to Backline: the Worker and GitProxy connections, AI model calls and the Janitor's credential refresh. Changing it restarts the Worker and GitProxy. It must be an address in the same Backline environment as the rest of the installation, which pulls its images and ships its logs there; the chart refuses to render when `baseUrl` is another environment's default address. For example: `--set baseUrl=https://customerx.backline.ai`.
+`baseUrl` re-points everything the installation sends to Backline: the Worker and GitProxy connections, AI model calls and the Janitor's credential refresh. Changing it restarts the Worker and GitProxy. It must be an address in the same Backline environment as the rest of the installation, which pulls its images and ships its logs there; the chart refuses to render when `baseUrl` is not a plain `https://` address (no port or path) or is another environment's default address. For example: `--set baseUrl=https://customerx.backline.ai`.
 
 ### Proxy Configuration
 
