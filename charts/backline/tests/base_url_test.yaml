@@ -1,0 +1,185 @@
+suite: baseUrl
+set:
+  accessKey: test-key
+tests:
+  - it: points the adapter, LLM proxy and every janitor call at baseUrl
+    templates:
+      - templates/adapter-configmap.yaml
+      - templates/worker-configmap.yaml
+      - templates/janitor-cronjob.yaml
+    set:
+      baseUrl: https://customerx.backline.ai
+    asserts:
+      - equal:
+          path: data.ADAPTER_BASE_URL
+          value: https://customerx.backline.ai/api/adapter/v1
+        template: templates/adapter-configmap.yaml
+      - equal:
+          path: data.LITELLM_SERVICE_URL
+          value: https://customerx.backline.ai/api/litellm/v1/proxy
+        template: templates/worker-configmap.yaml
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: 'POST "https://customerx\.backline\.ai/api/adapter/v1/exchange"'
+        template: templates/janitor-cronjob.yaml
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: 'GET "https://customerx\.backline\.ai/api/adapter/v1/ecr/dockerconfig"'
+        template: templates/janitor-cronjob.yaml
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: 'GET "https://customerx\.backline\.ai/api/adapter/v1/langfuse/config"'
+        template: templates/janitor-cronjob.yaml
+      - notMatchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: 'app\.backline\.ai'
+        template: templates/janitor-cronjob.yaml
+
+  - it: drops a trailing slash from baseUrl
+    template: templates/adapter-configmap.yaml
+    set:
+      baseUrl: https://customerx.backline.ai/
+    asserts:
+      - equal:
+          path: data.ADAPTER_BASE_URL
+          value: https://customerx.backline.ai/api/adapter/v1
+
+  - it: keeps every call on app.backline.ai when baseUrl is unset
+    templates:
+      - templates/adapter-configmap.yaml
+      - templates/worker-configmap.yaml
+      - templates/janitor-cronjob.yaml
+    asserts:
+      - equal:
+          path: data.ADAPTER_BASE_URL
+          value: https://app.backline.ai/api/adapter/v1
+        template: templates/adapter-configmap.yaml
+      - equal:
+          path: data.LITELLM_SERVICE_URL
+          value: https://app.backline.ai/api/litellm/v1/proxy
+        template: templates/worker-configmap.yaml
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: 'POST "https://app\.backline\.ai/api/adapter/v1/exchange"[\s\S]*GET "https://app\.backline\.ai/api/adapter/v1/ecr/dockerconfig"[\s\S]*GET "https://app\.backline\.ai/api/adapter/v1/langfuse/config"'
+        template: templates/janitor-cronjob.yaml
+
+  - it: keeps every call on staging-app.backline.ai when baseUrl is unset and environment is staging
+    templates:
+      - templates/adapter-configmap.yaml
+      - templates/worker-configmap.yaml
+      - templates/janitor-cronjob.yaml
+    set:
+      environment: staging
+    asserts:
+      - equal:
+          path: data.ADAPTER_BASE_URL
+          value: https://staging-app.backline.ai/api/adapter/v1
+        template: templates/adapter-configmap.yaml
+      - equal:
+          path: data.LITELLM_SERVICE_URL
+          value: https://staging-app.backline.ai/api/litellm/v1/proxy
+        template: templates/worker-configmap.yaml
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: 'POST "https://staging-app\.backline\.ai/api/adapter/v1/exchange"[\s\S]*GET "https://staging-app\.backline\.ai/api/adapter/v1/ecr/dockerconfig"[\s\S]*GET "https://staging-app\.backline\.ai/api/adapter/v1/langfuse/config"'
+        template: templates/janitor-cronjob.yaml
+
+  - it: leaves the image registry, region and log-shipping role on the environment
+    templates:
+      - templates/worker-deployment.yaml
+      - templates/gitproxy-deployment.yaml
+      - templates/janitor-cronjob.yaml
+      - templates/seaweedfs-adot-configmap.yaml
+    set:
+      baseUrl: https://customerx.backline.ai
+      gitproxy.enabled: true
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[?(@.name == "worker")].image
+          pattern: '^314146328431\.dkr\.ecr\.us-east-1\.amazonaws\.com/prod-runner:'
+        template: templates/worker-deployment.yaml
+      - matchRegex:
+          path: spec.template.spec.containers[?(@.name == "gitproxy")].image
+          pattern: '^314146328431\.dkr\.ecr\.us-east-1\.amazonaws\.com/prod-gitproxy:'
+        template: templates/gitproxy-deployment.yaml
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
+          pattern: 'REGISTRY=314146328431\.dkr\.ecr\.us-east-1\.amazonaws\.com\n'
+        template: templates/janitor-cronjob.yaml
+      - equal:
+          path: data.AWS_REGION
+          value: us-east-1
+        template: templates/seaweedfs-adot-configmap.yaml
+        documentIndex: 0
+      - equal:
+          path: data.AWS_ROLE_ARN
+          value: arn:aws:iam::314146328431:role/OnPremOtelShipRole
+        template: templates/seaweedfs-adot-configmap.yaml
+        documentIndex: 0
+
+  - it: accepts a dedicated staging address with environment staging
+    templates:
+      - templates/adapter-configmap.yaml
+      - templates/worker-deployment.yaml
+    set:
+      environment: staging
+      baseUrl: https://staging-customerx.backline.ai
+    asserts:
+      - equal:
+          path: data.ADAPTER_BASE_URL
+          value: https://staging-customerx.backline.ai/api/adapter/v1
+        template: templates/adapter-configmap.yaml
+      - matchRegex:
+          path: spec.template.spec.containers[?(@.name == "worker")].image
+          pattern: '^580550010989\.dkr\.ecr\.us-west-1\.amazonaws\.com/runner:'
+        template: templates/worker-deployment.yaml
+
+  # Helm stops at the first template that includes the helper; worker-deployment renders before the ConfigMaps.
+  - it: rejects an address without a scheme
+    template: templates/worker-deployment.yaml
+    set:
+      baseUrl: customerx.backline.ai
+    asserts:
+      - failedTemplate:
+          errorPattern: 'baseUrl \(customerx\.backline\.ai\) must be an https:// address'
+
+  - it: rejects a plain http address, which would send the access key unencrypted
+    template: templates/worker-deployment.yaml
+    set:
+      baseUrl: http://customerx.backline.ai
+    asserts:
+      - failedTemplate:
+          errorPattern: 'baseUrl \(http://customerx\.backline\.ai\) must be an https:// address'
+
+  - it: rejects an address with a path
+    template: templates/worker-deployment.yaml
+    set:
+      baseUrl: https://customerx.backline.ai/api/adapter/v1
+    asserts:
+      - failedTemplate:
+          errorPattern: 'must be an https:// address with no port or path'
+
+  - it: rejects an address with a port
+    template: templates/worker-deployment.yaml
+    set:
+      baseUrl: https://customerx.backline.ai:8443
+    asserts:
+      - failedTemplate:
+          errorPattern: 'must be an https:// address with no port or path'
+
+  - it: rejects the production address with environment staging
+    template: templates/worker-deployment.yaml
+    set:
+      environment: staging
+      baseUrl: https://app.backline.ai/
+    asserts:
+      - failedTemplate:
+          errorPattern: 'baseUrl \(https://app\.backline\.ai\) is Backline production but environment is staging'
+
+  - it: rejects the staging address with environment production
+    template: templates/worker-deployment.yaml
+    set:
+      baseUrl: https://staging-app.backline.ai
+    asserts:
+      - failedTemplate:
+          errorPattern: 'baseUrl \(https://staging-app\.backline\.ai\) is Backline staging but environment is production'
