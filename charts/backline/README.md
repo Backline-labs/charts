@@ -597,6 +597,20 @@ All pods need access to the Backline AI SaaS endpoint. Please reach out to your 
 
 With a dedicated address (`baseUrl`), pods connect to that host on port 443, and Backline accepts connections to it only from the IP ranges registered for your tenant, so those ranges must include your cluster's egress IPs.
 
+Besides the Backline address, the installation reaches these Backline-operated and third-party endpoints, all on port 443. Image pulls are made by the nodes' container runtime, so allow those hosts for node egress, not only pod egress.
+
+| Purpose | FQDNs | Used by |
+|---------|-------|---------|
+| Backline API, workflow polling, LLM access | `app.backline.ai`, or your `baseUrl` host | worker, gitproxy, janitor, analysis pods |
+| Backline images (`prod-runner`, `prod-gitproxy`, `prod-coder`) | `314146328431.dkr.ecr.us-east-1.amazonaws.com`, `prod-us-east-1-starport-layer-bucket.s3.us-east-1.amazonaws.com` | nodes; janitor (checks for new builds) |
+| Log shipping | `logs.us-east-1.amazonaws.com` | telemetry collector sidecars |
+| Metrics shipping | `aps-workspaces.us-east-1.amazonaws.com` | telemetry collector sidecar (worker) |
+| Credentials for log and metrics shipping | `sts.us-east-1.amazonaws.com` | telemetry collector sidecars |
+| Trace shipping | `xray.us-east-1.amazonaws.com` | telemetry collector sidecars |
+| Telemetry collector image | `public.ecr.aws`, `d2glxqk2uabbnd.cloudfront.net` | nodes |
+| Dependency-update jobs (`ghcr.io/dependabot/dependabot-updater-*`) | `ghcr.io`, `pkg-containers.githubusercontent.com` | nodes |
+| Janitor and SeaweedFS images (Docker Hub, unless `janitor.image.registry` points at a mirror) | `registry-1.docker.io`, `index.docker.io`, `auth.docker.io`, `production.cloudflare.docker.com`, `production.cloudfront.docker.com` | nodes |
+
 ### Package Registries
 
 Coder pods need access to package registries to install dependencies during code execution. Whitelist based on the languages your projects use.
@@ -654,7 +668,7 @@ For container image analysis (e.g., via skopeo), whitelist the following registr
 
 | Registry | FQDNs | Port | Protocol |
 |----------|-------|------|----------|
-| **Docker Hub** | `docker.io`, `*.docker.io`, `production.cloudflare.docker.com` | 443 | TCP |
+| **Docker Hub** | `docker.io`, `*.docker.io`, `production.cloudflare.docker.com`, `production.cloudfront.docker.com` | 443 | TCP |
 | **Google (GCR/Artifact Registry)** | `gcr.io`, `*.gcr.io`, `*.pkg.dev` | 443 | TCP |
 | **GitHub Container Registry** | `ghcr.io` | 443 | TCP |
 | **Quay.io** | `quay.io` | 443 | TCP |
@@ -732,7 +746,7 @@ For a minimal installation, ensure at least the following are whitelisted:
 | Category | Essential FQDNs |
 |----------|-----------------|
 | **DNS** | kube-dns (internal) |
-| **Backline Cloud** | Backline SaaS endpoint (provided during onboarding) |
+| **Backline Cloud** | Backline address, Backline images and telemetry (see [Backline](#backline)) |
 | **SCM** | Your SCM provider (github.com, gitlab.com, or bitbucket.org) |
 | **Package Registries** | Based on your tech stack (see above) |
 

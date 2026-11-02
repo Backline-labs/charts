@@ -49,7 +49,8 @@ jobs:
 
           for chart in charts/*/Chart.yaml; do
             dir=$(dirname "$chart")
-            if [ -n "$(git diff --name-only "$BASE"...HEAD -- "$dir" ":(exclude)$dir/tests")" ]; then
+            # Docs-only changes reach readers on GitHub without a release.
+            if [ -n "$(git diff --name-only "$BASE"...HEAD -- "$dir" ":(exclude)$dir/tests" ":(exclude,glob)$dir/**/*.md")" ]; then
               base_version=$(git show "$BASE:$chart" 2>/dev/null | chart_value version || true)
               version=$(chart_value version < "$chart")
               # A version already above the base is kept, so minor and major bumps stay manual.
