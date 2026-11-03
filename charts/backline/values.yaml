@@ -93,6 +93,12 @@ objectStorage:
 seaweedfs:
   enabled: true
   fullnameOverride: seaweedfs
+  global:
+    seaweedfs:
+      extraEnvironmentVars:
+        # Internal: the all-in-one pod reaches its master on localhost without it, and a release that renders it
+        # can lose it from the running pod when its duplicate from SeaweedFS chart 4.31 is removed.
+        WEED_CLUSTER_DEFAULT: null
   master:
     enabled: false
   volume:
