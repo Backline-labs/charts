@@ -16,10 +16,11 @@ spec:
       labels:
         app: gitproxy
       # On the pod template so a ConfigMap change rolls the pods; they read it only at start.
-      annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/gitproxy-configmap.yaml") . | sha256sum | quote }}
-        checksum/adapter-config: {{ include (print $.Template.BasePath "/adapter-configmap.yaml") . | sha256sum | quote }}
-        checksum/adot-config: {{ include (print $.Template.BasePath "/adot-configmap.yaml") . | sha256sum | quote }}
+      {{- include "backline.podAnnotations" (dict "root" . "annotations" (dict
+        "checksum/config" (include (print $.Template.BasePath "/gitproxy-configmap.yaml") . | sha256sum)
+        "checksum/adapter-config" (include (print $.Template.BasePath "/adapter-configmap.yaml") . | sha256sum)
+        "checksum/adot-config" (include (print $.Template.BasePath "/adot-configmap.yaml") . | sha256sum)
+      )) | nindent 6 }}
     spec:
       serviceAccountName: gitproxy
       imagePullSecrets:

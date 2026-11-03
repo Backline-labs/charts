@@ -27,6 +27,14 @@ proxy:
 customCaCert: ""
 
 # ============================================================================
+# POD ANNOTATIONS (optional)
+# ============================================================================
+# Added to every Backline pod: Worker, GitProxy, Janitor, setup jobs and Coder
+# Jobs. SeaweedFS pods take theirs from seaweedfs.podAnnotations. Set them here,
+# not on the live objects, so helm upgrade keeps them.
+podAnnotations: {}
+
+# ============================================================================
 # EXTERNAL SECRETS (optional)
 # ============================================================================
 # Source chart secrets from any secret manager the External Secrets Operator
@@ -141,12 +149,10 @@ seaweedfs:
       limits:
         cpu: "500m"
         memory: "4Gi"
-    # Internal: memory grows with the bytes being uploaded, so cap the data in flight (further uploads wait their turn),
-    # and keep the Go heap under the limit. The chart fails to render if an override drops either.
+    # Internal: memory grows with the bytes being uploaded, so cap the data in flight (further uploads wait their turn).
+    # The chart fails to render if an override drops it.
     extraArgs:
       - "-s3.concurrentUploadLimitMB=256"
-    extraEnvironmentVars:
-      GOMEMLIMIT: '{{ include "backline.seaweedfsGoMemLimit" . }}'
     # weed reads logging flags only before `server`, and this is the only value the subchart places there.
     loggingOverrideLevel: "1 -logdir=/var/log/backline -log_json -log_max_size_mb=20 -log_max_files=2"
     sidecars: '{{ include "adot.seaweedfsSidecar" . }}'

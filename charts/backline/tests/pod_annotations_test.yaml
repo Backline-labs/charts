@@ -1,0 +1,94 @@
+suite: pod annotations
+set:
+  accessKey: test-key
+  gitproxy.enabled: true
+  objectStorage.operationalRetention: 7d
+tests:
+  - it: adds podAnnotations to every Backline pod
+    templates:
+      - templates/worker-deployment.yaml
+      - templates/gitproxy-deployment.yaml
+      - templates/seaweedfs-buckets-hook.yaml
+      - templates/seaweedfs-retention-hook.yaml
+    set:
+      podAnnotations:
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: 10.0.0.0/24
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["traffic.sidecar.istio.io/excludeOutboundIPRanges"]
+          value: 10.0.0.0/24
+
+  - it: adds podAnnotations to the Janitor pod
+    template: templates/janitor-cronjob.yaml
+    set:
+      podAnnotations:
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: 10.0.0.0/24
+    asserts:
+      - equal:
+          path: spec.jobTemplate.spec.template.metadata.annotations["traffic.sidecar.istio.io/excludeOutboundIPRanges"]
+          value: 10.0.0.0/24
+
+  - it: passes podAnnotations to the jobs the Worker launches
+    template: templates/worker-configmap.yaml
+    set:
+      podAnnotations:
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: 10.0.0.0/24
+    asserts:
+      - matchRegex:
+          path: data.CODER_JOB_SPEC
+          pattern: '"annotations":\{"traffic.sidecar.istio.io/excludeOutboundIPRanges":"10.0.0.0/24"\}'
+      - matchRegex:
+          path: data.DBOT_UPGRADER_JOB_SPEC
+          pattern: '"annotations":\{"traffic.sidecar.istio.io/excludeOutboundIPRanges":"10.0.0.0/24"\}'
+
+  - it: renders values as strings, as Kubernetes requires
+    template: templates/worker-deployment.yaml
+    set:
+      podAnnotations:
+        sidecar.istio.io/inject: true
+        example.com/count: 5
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["sidecar.istio.io/inject"]
+          value: "true"
+      - equal:
+          path: spec.template.metadata.annotations["example.com/count"]
+          value: "5"
+
+  - it: keeps the chart's checksum over a podAnnotations key of the same name
+    template: templates/worker-deployment.yaml
+    set:
+      podAnnotations:
+        checksum/config: pinned
+    asserts:
+      - notEqual:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: pinned
+      - matchRegex:
+          path: spec.template.metadata.annotations["checksum/config"]
+          pattern: '^[0-9a-f]{64}$'
+
+  # An empty annotations key would make helm upgrade delete annotations added outside the chart.
+  - it: renders no annotations key on pods without annotations
+    templates:
+      - templates/seaweedfs-buckets-hook.yaml
+      - templates/seaweedfs-retention-hook.yaml
+    asserts:
+      - notExists:
+          path: spec.template.metadata.annotations
+
+  - it: renders no pod metadata on the Janitor without annotations
+    template: templates/janitor-cronjob.yaml
+    asserts:
+      - notExists:
+          path: spec.jobTemplate.spec.template.metadata
+
+  - it: leaves the job specs without annotations by default
+    template: templates/worker-configmap.yaml
+    asserts:
+      - notMatchRegex:
+          path: data.CODER_JOB_SPEC
+          pattern: '"annotations"'
+      - notMatchRegex:
+          path: data.DBOT_UPGRADER_JOB_SPEC
+          pattern: '"annotations"'

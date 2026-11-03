@@ -15,6 +15,10 @@ spec:
       # Never + a small backoffLimit: each retry gets a new pod, so failed attempts keep their logs.
       backoffLimit: 2
       template:
+        {{- with include "backline.podAnnotations" (dict "root" .) }}
+        metadata:
+          {{- . | nindent 10 }}
+        {{- end }}
         spec:
           serviceAccountName: janitor
           restartPolicy: Never
