@@ -20,6 +20,9 @@ spec:
     metadata:
       labels:
         app: seaweedfs
+      {{- with include "backline.podAnnotations" (dict "root" .) }}
+      {{- . | nindent 6 }}
+      {{- end }}
     spec:
       restartPolicy: Never
       securityContext:

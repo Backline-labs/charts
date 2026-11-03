@@ -4,6 +4,9 @@ backoffLimit: 0
 template:
   metadata:
     labels: {} # Auto filled
+    {{- with include "backline.podAnnotations" (dict "root" .) }}
+    {{- . | nindent 4 }}
+    {{- end }}
   spec:
     restartPolicy: Never
     securityContext:

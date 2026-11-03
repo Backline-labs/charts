@@ -12,7 +12,7 @@
 {{- end }}
 {{- end -}}
 
-{{/* The upload cap and GOMEMLIMIT keep upload bursts from OOM-killing SeaweedFS; overrides must keep them. */}}
+{{/* The upload cap keeps upload bursts from OOM-killing SeaweedFS; overrides must keep it. */}}
 {{- define "backline.validateSeaweedfsMemoryGuards" -}}
 {{- if .enabled -}}
 {{- $capped := false -}}
@@ -21,9 +21,6 @@
 {{- end -}}
 {{- if not $capped -}}
 {{- fail "seaweedfs.allInOne.extraArgs must include -s3.concurrentUploadLimitMB=<MiB> (default 256), which keeps upload bursts from exhausting the SeaweedFS pod's memory. Keep it alongside any flags you add." -}}
-{{- end -}}
-{{- if not (get (.extraEnvironmentVars | default dict) "GOMEMLIMIT") -}}
-{{- fail "seaweedfs.allInOne.extraEnvironmentVars must keep GOMEMLIMIT, which keeps SeaweedFS's memory below its container limit. Keep it alongside any variables you add." -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -42,21 +39,6 @@ operational ttl; before 1.6.0 it was set in seaweedfs.allInOne.s3.createBuckets,
 {{- end -}}
 {{- if $ttl -}}{{- $_ := set $buckets.operational "ttl" (toString $ttl) -}}{{- end -}}
 {{- toJson $buckets -}}
-{{- end -}}
-
-{{/*
-GOMEMLIMIT for the SeaweedFS all-in-one pod: 90% of its memory limit, in bytes, so the Go runtime
-collects garbage harder before the container is OOM-killed. Rendered through tpl in the SeaweedFS
-subchart, so .Values is the subchart's. Empty (no soft limit) when the limit is unset or not a
-whole number with a Ki/Mi/Gi/Ti/k/M/G/T suffix.
-*/}}
-{{- define "backline.seaweedfsGoMemLimit" -}}
-{{- $limit := toString ((((.Values.allInOne).resources).limits).memory) -}}
-{{- if regexMatch "^[0-9]+(Ki|Mi|Gi|Ti|k|M|G|T)?$" $limit -}}
-{{- $units := dict "" 1 "Ki" 1024 "Mi" 1048576 "Gi" 1073741824 "Ti" 1099511627776 "k" 1000 "M" 1000000 "G" 1000000000 "T" 1000000000000 -}}
-{{- $bytes := mul (regexFind "^[0-9]+" $limit | atoi) (get $units (regexReplaceAll "^[0-9]+" $limit "")) -}}
-{{- div (mul $bytes 9) 10 -}}
-{{- end -}}
 {{- end -}}
 
 {{/* Non-empty for environment=staging; any other value selects production. */}}
@@ -85,6 +67,18 @@ fsGroup: 1010
 fsGroupChangePolicy: OnRootMismatch
 seccompProfile:
   type: RuntimeDefault
+{{- end -}}
+
+{{/* A pod's annotations key: podAnnotations plus the chart's own (.annotations, which win).
+Renders nothing when empty, as an empty key makes helm upgrade drop annotations set outside the chart. */}}
+{{- define "backline.podAnnotations" -}}
+{{- $annotations := merge (dict) (.annotations | default dict) (.root.Values.podAnnotations | default dict) -}}
+{{- with $annotations -}}
+annotations:
+{{- range $key, $value := . }}
+  {{ $key | quote }}: {{ $value | toString | quote }}
+{{- end }}
+{{- end -}}
 {{- end -}}
 
 {{- define "logging.dir" -}}

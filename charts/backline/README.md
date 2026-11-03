@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.6.6
+**Chart Version:** 1.7.0
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -55,6 +55,7 @@ graph TB
       - [Object Retention](#object-retention)
       - [External S3 Storage](#external-s3-storage)
     - [Pod Security](#pod-security)
+    - [Pod Annotations](#pod-annotations)
     - [Resource Profiles](#resource-profiles)
   - [High Availability Recommendations](#high-availability-recommendations)
     - [Component Availability Model](#component-availability-model)
@@ -90,6 +91,7 @@ graph TB
     - [Minimal Installation](#minimal-installation)
     - [Advanced Configuration](#advanced-configuration)
   - [Upgrading](#upgrading)
+    - [Upgrading to 1.7.0](#upgrading-to-170)
     - [Upgrading to 1.6.0](#upgrading-to-160)
     - [Migrating from MinIO to SeaweedFS](#migrating-from-minio-to-seaweedfs)
   - [GitOps Deployments](#gitops-deployments)
@@ -170,6 +172,7 @@ helm install backline backline-ai/backline \
 | `baseUrl`           | The Backline address the installation connects to. Set it only to a dedicated address Backline gives you (see below); empty uses the default Backline address.                  | No       | `""`         |
 | `namespaceOverride` | Override the default namespace                                                                                                                                                  | No       | `backline`   |
 | `customCaCert`      | Base64-encoded PEM CA certificate(s) used for trusted communication with a self-hosted git host (internal/corporate CA). See "Trusting a self-hosted git server's internal CA". | No       | `""`         |
+| `podAnnotations`    | Annotations added to every Backline pod, e.g. Istio sidecar settings. See [Pod Annotations](#pod-annotations)                                                                 | No       | `{}`         |
 
 `baseUrl` re-points everything the installation sends to Backline: the Worker and GitProxy connections, AI model calls and the Janitor's credential refresh. Changing it restarts the Worker and GitProxy. It must be an address in the same Backline environment as the rest of the installation, which pulls its images and ships its logs there; the chart refuses to render when `baseUrl` is not a plain `https://` address (no port or path) or is another environment's default address. For example: `--set baseUrl=https://customerx.backline.ai`.
 
@@ -311,6 +314,7 @@ customCaCert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...=="   # base64 of your CA's PE
 | `seaweedfs.allInOne.podSecurityContext`       | All-in-one pod security context (see [Pod Security](#pod-security))         | UID/GID/fsGroup `1000`          |
 | `seaweedfs.allInOne.collectorImage`           | Log sidecar image. Required when `worker.otel.collector.image` is set; use the same mirror image | `""` (default collector image)  |
 | `seaweedfs.filer.podSecurityContext`          | Bucket-creation hook pod security context (read even with the filer off)    | UID/GID/fsGroup `1000`          |
+| `seaweedfs.podAnnotations`                    | Annotations added to the SeaweedFS pods. See [Pod Annotations](#pod-annotations) | `{}`                       |
 
 SeaweedFS logs are shipped to Backline by a collector sidecar in the all-in-one pod. Overriding `seaweedfs.allInOne.loggingOverrideLevel`, `sidecars`, `extraVolumes` or `extraVolumeMounts` stops them being shipped.
 
@@ -417,6 +421,35 @@ own `/data`. On upgrade from an older chart, the kubelet regroups existing root-
 data to GID 1000 on first start. Volume types that ignore `fsGroup` (many NFS
 provisioners) need the data chowned to `1000:1000` once. `allInOne.data.type: hostPath`
 is not permitted under `restricted`.
+
+### Pod Annotations
+
+Set pod annotations, such as Istio sidecar settings, in your values. Annotations added by
+hand to the live Deployments or pods are not part of the release: a later `helm upgrade` or
+pod restart can remove them, and the Coder Jobs the Worker launches never get them.
+
+`podAnnotations` is added to every Backline pod: the Worker, GitProxy, the Janitor, the
+chart's setup jobs and the Coder Jobs. SeaweedFS pods come from the SeaweedFS chart, so set
+the same annotations under `seaweedfs.podAnnotations` too. A YAML anchor keeps the two in step:
+
+```yaml
+podAnnotations: &podAnnotations
+  # Traffic to this range bypasses the Istio sidecar
+  traffic.sidecar.istio.io/excludeOutboundIPRanges: "10.0.0.0/24"
+
+seaweedfs:
+  podAnnotations: *podAnnotations
+```
+
+On the command line, escape the dots in the annotation name:
+
+```bash
+--set-string 'podAnnotations.traffic\.sidecar\.istio\.io/excludeOutboundIPRanges=10.0.0.0/24'
+```
+
+Changing either value restarts the affected pods on the next `helm upgrade`. SeaweedFS stops
+before its replacement starts, so object storage is unavailable for a few seconds. The
+`checksum/*` annotations the charts set themselves cannot be overridden.
 
 ### Resource Profiles
 
@@ -1090,6 +1123,11 @@ helm upgrade backline \
   --namespace backline \
   --values updated-values.yaml
 ```
+
+### Upgrading to 1.7.0
+
+- The bundled SeaweedFS moves from 4.31 to 4.52. The upgrade restarts the SeaweedFS pod once; stored objects are kept, and object storage is unavailable until the new pod is ready.
+- Pod annotations are now set with `podAnnotations` and `seaweedfs.podAnnotations` (see [Pod Annotations](#pod-annotations)). Earlier versions removed annotations added by hand to the SeaweedFS pod on every `helm upgrade`; move any such annotations into your values.
 
 ### Upgrading to 1.6.0
 
