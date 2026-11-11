@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.7.0
+**Chart Version:** 1.7.1
 **App Version:** 1.1.0
 
 ## Table of Contents
