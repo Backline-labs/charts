@@ -13,6 +13,7 @@ namespaceOverride: "backline"
 # containers. Leave empty to connect directly.
 # Include your internal hosts (e.g. a self-hosted git server) and in-cluster
 # addresses in noProxy so they are reached directly, not through the proxy.
+# The Kubernetes API server is always reached directly; it needs no entry.
 proxy:
   httpProxy: ""
   httpsProxy: ""

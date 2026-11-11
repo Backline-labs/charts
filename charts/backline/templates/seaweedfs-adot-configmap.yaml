@@ -12,7 +12,7 @@ metadata:
 data:
   AWS_ROLE_ARN: {{ include "logging.roleArn" . | quote }}
   AWS_REGION: {{ include "region" . | quote }}
-  {{- range include "backline.proxyEnv" . | fromYamlArray }}
+  {{- range include "backline.proxyVars" (dict "proxy" .Values.proxy) | fromYamlArray }}
   {{ .name }}: {{ .value | quote }}
   {{- end }}
 ---
