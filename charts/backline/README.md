@@ -178,7 +178,7 @@ helm install backline backline-ai/backline \
 
 ### Proxy Configuration
 
-For clusters that route outbound traffic through a corporate proxy. When set, these are injected (both upper- and lower-case) into the worker, gitproxy and janitor containers. Leave empty to connect directly. The Kubernetes API server is always reached directly: the chart adds it to `NO_PROXY`.
+For clusters that route outbound traffic through a corporate proxy. When set, these are injected (both upper- and lower-case) into the worker, gitproxy and janitor containers. Leave empty to connect directly. The Kubernetes API server is always reached directly: the agent connects to it by IP, which host names like `.svc` don't match, so the chart adds it to `NO_PROXY` and it needs no entry of yours.
 
 | Parameter          | Description                                                                                                | Default |
 | ------------------ | ---------------------------------------------------------------------------------------------------------- | ------- |
