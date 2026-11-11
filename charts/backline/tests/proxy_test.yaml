@@ -1,0 +1,77 @@
+suite: outbound proxy
+set:
+  accessKey: test-key
+  gitproxy.enabled: true
+tests:
+  - it: reaches the Kubernetes API directly when egress goes through a proxy
+    templates:
+      - templates/worker-deployment.yaml
+      - templates/gitproxy-deployment.yaml
+      - templates/janitor-cronjob.yaml
+    set:
+      proxy.httpsProxy: http://proxy.example:3128
+      proxy.noProxy: .svc,.cluster.local
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "worker")].env[?(@.name == "NO_PROXY")].value
+          value: .svc,.cluster.local,$(KUBERNETES_SERVICE_HOST)
+        template: templates/worker-deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "worker")].env[?(@.name == "no_proxy")].value
+          value: .svc,.cluster.local,$(KUBERNETES_SERVICE_HOST)
+        template: templates/worker-deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "gitproxy")].env[?(@.name == "NO_PROXY")].value
+          value: .svc,.cluster.local,$(KUBERNETES_SERVICE_HOST)
+        template: templates/gitproxy-deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[?(@.name == "janitor")].env[?(@.name == "NO_PROXY")].value
+          value: .svc,.cluster.local,$(KUBERNETES_SERVICE_HOST)
+        template: templates/janitor-cronjob.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[?(@.name == "janitor")].env[?(@.name == "no_proxy")].value
+          value: .svc,.cluster.local,$(KUBERNETES_SERVICE_HOST)
+        template: templates/janitor-cronjob.yaml
+
+  - it: keeps the Kubernetes API direct when only a proxy is set
+    templates:
+      - templates/worker-deployment.yaml
+      - templates/gitproxy-deployment.yaml
+      - templates/janitor-cronjob.yaml
+    set:
+      proxy.httpProxy: http://proxy.example:3128
+    asserts:
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[?(@.name == "janitor")].env[?(@.name == "NO_PROXY")].value
+          value: $(KUBERNETES_SERVICE_HOST)
+        template: templates/janitor-cronjob.yaml
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "worker")].env[?(@.name == "NO_PROXY")].value
+          value: $(KUBERNETES_SERVICE_HOST)
+        template: templates/worker-deployment.yaml
+
+  - it: passes noProxy through unchanged when nothing goes through a proxy
+    templates:
+      - templates/worker-deployment.yaml
+      - templates/gitproxy-deployment.yaml
+      - templates/janitor-cronjob.yaml
+    set:
+      proxy.noProxy: .svc
+    asserts:
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[?(@.name == "janitor")].env[?(@.name == "NO_PROXY")].value
+          value: .svc
+        template: templates/janitor-cronjob.yaml
+
+  - it: sets no proxy variables by default
+    templates:
+      - templates/worker-deployment.yaml
+      - templates/gitproxy-deployment.yaml
+      - templates/janitor-cronjob.yaml
+    asserts:
+      - notExists:
+          path: spec.jobTemplate.spec.template.spec.containers[?(@.name == "janitor")].env[?(@.name == "NO_PROXY")]
+        template: templates/janitor-cronjob.yaml
+      - notExists:
+          path: spec.template.spec.containers[?(@.name == "worker")].env[?(@.name == "NO_PROXY")]
+        template: templates/worker-deployment.yaml

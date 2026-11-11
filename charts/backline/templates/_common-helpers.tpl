@@ -296,7 +296,21 @@ corporate proxy. Emitted in both upper- and lower-case so Go- and shell-based
 components honour them, and only for the fields that are set.
 */}}
 {{- define "backline.proxyEnv" -}}
-{{- with .Values.proxy }}
+{{- include "backline.proxyVars" (dict "proxy" .Values.proxy "apiServer" true) }}
+{{- end -}}
+
+{{/*
+The proxy variables themselves. With apiServer, a container's NO_PROXY also names
+the Kubernetes API: clients dial it by the IP in KUBERNETES_SERVICE_HOST, which no
+host suffix in noProxy matches, so behind a proxy every kubectl call failed.
+*/}}
+{{- define "backline.proxyVars" -}}
+{{- $apiServer := .apiServer }}
+{{- with .proxy }}
+{{- $noProxy := .noProxy }}
+{{- if and $apiServer (or .httpProxy .httpsProxy) }}
+{{- $noProxy = join "," (compact (list .noProxy "$(KUBERNETES_SERVICE_HOST)")) }}
+{{- end }}
 {{- if .httpProxy }}
 - name: HTTP_PROXY
   value: {{ .httpProxy | quote }}
@@ -309,11 +323,11 @@ components honour them, and only for the fields that are set.
 - name: https_proxy
   value: {{ .httpsProxy | quote }}
 {{- end }}
-{{- if .noProxy }}
+{{- if $noProxy }}
 - name: NO_PROXY
-  value: {{ .noProxy | quote }}
+  value: {{ $noProxy | quote }}
 - name: no_proxy
-  value: {{ .noProxy | quote }}
+  value: {{ $noProxy | quote }}
 {{- end }}
 {{- end }}
 {{- end -}}
