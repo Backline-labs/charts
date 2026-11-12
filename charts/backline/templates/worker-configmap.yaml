@@ -26,5 +26,7 @@ data:
     {{ include "backline.coderJobSpec" . }}
   DBOT_UPGRADER_JOB_SPEC: |
     {{ include "backline.upgraderJobSpec" . }}
+  CODER_AGENTIC_STEP_JOB_SPEC: |
+    {{ include "backline.agenticStepJobSpec" . }}
   RESOURCE_PROFILES: |
     {{ .Values.resourceProfiles | toJson }}

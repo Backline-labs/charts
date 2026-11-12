@@ -1,0 +1,38 @@
+{{- /*
+The install's part of an agentic step pod. The runner fills in the image, the step, its env,
+resources, run folders and run policy, and adds the proxy and custom CA settings it adds to
+every job. Without this spec the runner's default has no pull secret, so a step pulls with the
+node's own credentials and fails on any node that hasn't cached the image, and its log lines
+never reach the collector. The image's entrypoint runs the step, so the container has no command.
+*/ -}}
+{{- define "backline.rawAgenticStepJobSpec" -}}
+template:
+  metadata:
+    labels: {} # Auto filled
+    {{- with include "backline.podAnnotations" (dict "root" .) }}
+    {{- . | nindent 4 }}
+    {{- end }}
+  spec:
+    securityContext:
+      {{- include "common.podSecurityContext" . | nindent 6 }}
+    imagePullSecrets:
+      - name: {{ include "secretname.dockerconfig" . }}
+    initContainers:
+      {{- include "adot.sidecar" (merge (dict "isJob" true) .) | nindent 6 }}
+    containers:
+      - name: agentic
+        securityContext:
+          {{- include "common.containerSecurityContext" . | nindent 10 }}
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: LOG_FILE
+            value: {{ printf "%s/agentic.log" (include "logging.dir" .) | quote }}
+        volumeMounts:
+          {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 10 }}
+    volumes:
+      {{- include "adot.volumes" . | nindent 6 }}
+{{- end -}}
+
+{{- define "backline.agenticStepJobSpec" -}}
+{{ include "backline.rawAgenticStepJobSpec" . | fromYaml | toJson }}
+{{- end -}}
