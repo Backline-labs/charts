@@ -1,0 +1,56 @@
+suite: agentic step job spec
+set:
+  accessKey: test-key
+capabilities:
+  majorVersion: 1
+  minorVersion: 30
+tests:
+  - it: pulls the step image with the install's registry login
+    template: templates/worker-configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data.CODER_AGENTIC_STEP_JOB_SPEC
+          pattern: '"imagePullSecrets":\[\{"name":"dockerconfig"\}\]'
+
+  - it: ships the step's log file through the collector
+    template: templates/worker-configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data.CODER_AGENTIC_STEP_JOB_SPEC
+          pattern: '"name":"adot-collector"'
+      - matchRegex:
+          path: data.CODER_AGENTIC_STEP_JOB_SPEC
+          pattern: '\{"name":"LOG_FILE","value":"/var/log/backline/agentic.log"\}'
+      - matchRegex:
+          path: data.CODER_AGENTIC_STEP_JOB_SPEC
+          pattern: '"name":"agentic","securityContext":\{[^}]*\{[^}]*\}[^}]*\},"volumeMounts":\[\{"mountPath":"/var/log/backline","name":"shared-logs","readOnly":false\}\]'
+
+  - it: leaves the step container its image's entrypoint
+    template: templates/worker-configmap.yaml
+    asserts:
+      - notMatchRegex:
+          path: data.CODER_AGENTIC_STEP_JOB_SPEC
+          pattern: '"command"'
+
+  - it: runs no collector before native sidecars exist
+    template: templates/worker-configmap.yaml
+    capabilities:
+      majorVersion: 1
+      minorVersion: 28
+    asserts:
+      - notMatchRegex:
+          path: data.CODER_AGENTIC_STEP_JOB_SPEC
+          pattern: '"adot-collector"'
+      - matchRegex:
+          path: data.CODER_AGENTIC_STEP_JOB_SPEC
+          pattern: '"imagePullSecrets":\[\{"name":"dockerconfig"\}\]'
+
+  - it: carries podAnnotations to step pods
+    template: templates/worker-configmap.yaml
+    set:
+      podAnnotations:
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: 10.0.0.0/24
+    asserts:
+      - matchRegex:
+          path: data.CODER_AGENTIC_STEP_JOB_SPEC
+          pattern: '"annotations":\{"traffic.sidecar.istio.io/excludeOutboundIPRanges":"10.0.0.0/24"\}'
