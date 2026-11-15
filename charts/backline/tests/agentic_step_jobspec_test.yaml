@@ -21,9 +21,30 @@ tests:
       - matchRegex:
           path: data.CODER_AGENTIC_STEP_JOB_SPEC
           pattern: '\{"name":"LOG_FILE","value":"/var/log/backline/agentic.log"\}'
+
+  - it: keeps the step's root filesystem read-only
+    template: templates/worker-configmap.yaml
+    asserts:
       - matchRegex:
           path: data.CODER_AGENTIC_STEP_JOB_SPEC
-          pattern: '"name":"agentic","securityContext":\{[^}]*\{[^}]*\}[^}]*\},"volumeMounts":\[\{"mountPath":"/var/log/backline","name":"shared-logs","readOnly":false\}\]'
+          pattern: '"name":"agentic","securityContext":\{"allowPrivilegeEscalation":false,"capabilities":\{"drop":\["ALL"\]\},"readOnlyRootFilesystem":true\}'
+
+  - it: gives the step a writable home and /tmp
+    template: templates/worker-configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data.CODER_AGENTIC_STEP_JOB_SPEC
+          pattern: '\{"emptyDir":\{\},"name":"home-volume"\}'
+      - matchRegex:
+          path: data.CODER_AGENTIC_STEP_JOB_SPEC
+          pattern: '\{"emptyDir":\{\},"name":"tmp-volume"\}'
+
+  - it: mounts only the log folder and scratch volumes in the step, never the session token
+    template: templates/worker-configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data.CODER_AGENTIC_STEP_JOB_SPEC
+          pattern: '"name":"agentic","securityContext":\{[^}]*\{[^}]*\}[^}]*\},"volumeMounts":\[\{"mountPath":"/var/log/backline","name":"shared-logs","readOnly":false\},\{"mountPath":"/home/app_user","name":"home-volume"\},\{"mountPath":"/tmp","name":"tmp-volume"\}\]\}'
 
   - it: leaves the step container its image's entrypoint
     template: templates/worker-configmap.yaml
