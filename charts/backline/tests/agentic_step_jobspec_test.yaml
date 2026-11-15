@@ -39,12 +39,15 @@ tests:
           path: data.CODER_AGENTIC_STEP_JOB_SPEC
           pattern: '\{"emptyDir":\{\},"name":"tmp-volume"\}'
 
-  - it: mounts only the log folder and scratch volumes in the step, never the session token
+  - it: hands the step its LLM login outside the uploaded run folder
     template: templates/worker-configmap.yaml
     asserts:
       - matchRegex:
           path: data.CODER_AGENTIC_STEP_JOB_SPEC
-          pattern: '"name":"agentic","securityContext":\{[^}]*\{[^}]*\}[^}]*\},"volumeMounts":\[\{"mountPath":"/var/log/backline","name":"shared-logs","readOnly":false\},\{"mountPath":"/home/app_user","name":"home-volume"\},\{"mountPath":"/tmp","name":"tmp-volume"\}\]\}'
+          pattern: '\{"name":"AUTH_TOKEN_FILE","value":"/etc/backline/descope/token"\}'
+      - matchRegex:
+          path: data.CODER_AGENTIC_STEP_JOB_SPEC
+          pattern: '"name":"agentic","securityContext":\{[^}]*\{[^}]*\}[^}]*\},"volumeMounts":\[\{"mountPath":"/var/log/backline","name":"shared-logs","readOnly":false\},\{"mountPath":"/etc/backline/descope","name":"session-jwt","readOnly":true\},\{"mountPath":"/home/app_user","name":"home-volume"\},\{"mountPath":"/tmp","name":"tmp-volume"\}\]\}'
 
   - it: leaves the step container its image's entrypoint
     template: templates/worker-configmap.yaml
