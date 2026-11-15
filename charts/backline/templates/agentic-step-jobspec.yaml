@@ -1,0 +1,56 @@
+{{- /*
+The install's part of an agentic step pod. The runner fills in the image, the step, its env,
+resources, run folders and run policy, and adds the proxy and custom CA settings it adds to
+every job. Without this spec the runner's default has no pull secret, so a step pulls with the
+node's own credentials and fails on any node that hasn't cached the image, and its log lines
+never reach the collector. The image's entrypoint runs the step, so the container has no command.
+The root filesystem is read-only, as for coder jobs: besides the runner's /run and /branches, a
+step writes only to $HOME (registry logins, package caches) and /tmp (each session's TMPDIR).
+The session token is the step's login to Backline's LLM proxy: the step's local proxy reads it
+from AUTH_TOKEN_FILE on every call. It is mounted under /etc, not coder's /var/run/descope: in
+this image /var/run is the run folder, which is uploaded as the step's tarball.
+*/ -}}
+{{- define "backline.rawAgenticStepJobSpec" -}}
+template:
+  metadata:
+    labels: {} # Auto filled
+    {{- with include "backline.podAnnotations" (dict "root" .) }}
+    {{- . | nindent 4 }}
+    {{- end }}
+  spec:
+    securityContext:
+      {{- include "common.podSecurityContext" . | nindent 6 }}
+    imagePullSecrets:
+      - name: {{ include "secretname.dockerconfig" . }}
+    initContainers:
+      {{- include "adot.sidecar" (merge (dict "isJob" true) .) | nindent 6 }}
+    containers:
+      - name: agentic
+        securityContext:
+          {{- include "common.containerSecurityContext" (dict "readOnlyRootFilesystem" true) | nindent 10 }}
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: LOG_FILE
+            value: {{ printf "%s/agentic.log" (include "logging.dir" .) | quote }}
+          - name: AUTH_TOKEN_FILE
+            value: "/etc/backline/descope/token"
+        volumeMounts:
+          {{- include "adot.logVolumeMount" (dict "readOnly" false) | nindent 10 }}
+          - name: {{ include "secretname.sessionjwt" . }}
+            mountPath: /etc/backline/descope
+            readOnly: true
+          - name: home-volume
+            mountPath: /home/app_user
+          - name: tmp-volume
+            mountPath: /tmp
+    volumes:
+      {{- include "adot.volumes" . | nindent 6 }}
+      - name: home-volume
+        emptyDir: {}
+      - name: tmp-volume
+        emptyDir: {}
+{{- end -}}
+
+{{- define "backline.agenticStepJobSpec" -}}
+{{ include "backline.rawAgenticStepJobSpec" . | fromYaml | toJson }}
+{{- end -}}
