@@ -264,9 +264,11 @@ GitProxy enables Backline to interact with on-prem git servers that are not acce
 ```bash
 helm upgrade backline backline-ai/backline \
   --namespace backline \
-  --reuse-values \
+  --reset-then-reuse-values \
   --set gitproxy.enabled=true
 ```
+
+On Helm older than 3.14, see [Upgrading](#upgrading).
 
 **Trusting a self-hosted git server's internal CA:**
 
@@ -1113,7 +1115,7 @@ helm upgrade backline \
   --reset-then-reuse-values
 ```
 
-`--reset-then-reuse-values` takes the defaults from the new chart version and applies the values you set on the previous release on top of them. On Helm older than 3.14, use `--reuse-values` instead. It also keeps the values you set, but it keeps the previous chart version's defaults as well, so defaults that the new version adds or changes do not apply.
+`--reset-then-reuse-values` takes the defaults from the new chart version and applies the values you set on the previous release on top of them. Don't use `--reuse-values`: it keeps the values you set, but it also keeps the previous chart version's defaults, so defaults that the new version adds or changes do not apply. The upgrade can then fail to render (for example, 1.6.x to 1.7.x fails with `template: no template "backline.seaweedfsGoMemLimit"`) or render pods with outdated settings. On Helm older than 3.14, which has no `--reset-then-reuse-values`, upgrade with your values file instead (`helm get values backline -n backline > values.yaml`, then `-f values.yaml` as shown below). Leave out `--all`, which would save the old defaults too.
 
 Or with a values file:
 
@@ -1148,10 +1150,10 @@ For an orderly migration, retire MinIO **before** switching to the SeaweedFS cha
 
 ```bash
 # 1. On the MinIO-based release: disable MinIO, then remove its PVC
-helm upgrade backline backline-ai/backline -n backline --reuse-values --set minio.enabled=false
+helm upgrade backline backline-ai/backline -n backline --reset-then-reuse-values --set minio.enabled=false
 kubectl -n backline delete pvc minio --ignore-not-found
 # 2. Upgrade to the SeaweedFS-based chart (1.3.0+)
-helm upgrade backline backline-ai/backline -n backline --reuse-values
+helm upgrade backline backline-ai/backline -n backline --reset-then-reuse-values
 ```
 
 If you upgrade in place instead, remove the leftover MinIO PVC afterward:
