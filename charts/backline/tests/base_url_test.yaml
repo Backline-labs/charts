@@ -2,7 +2,7 @@ suite: baseUrl
 set:
   accessKey: test-key
 tests:
-  - it: points the adapter, LLM proxy and every janitor call at baseUrl
+  - it: points the adapter, LLM proxy, web proxy and every janitor call at baseUrl
     templates:
       - templates/adapter-configmap.yaml
       - templates/worker-configmap.yaml
@@ -17,6 +17,10 @@ tests:
       - equal:
           path: data.LITELLM_SERVICE_URL
           value: https://customerx.backline.ai/api/litellm/v1/proxy
+        template: templates/worker-configmap.yaml
+      - equal:
+          path: data.WEB_PROXY_URL
+          value: https://customerx.backline.ai/api/webproxy/v1
         template: templates/worker-configmap.yaml
       - matchRegex:
           path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
@@ -58,6 +62,10 @@ tests:
           path: data.LITELLM_SERVICE_URL
           value: https://app.backline.ai/api/litellm/v1/proxy
         template: templates/worker-configmap.yaml
+      - equal:
+          path: data.WEB_PROXY_URL
+          value: https://app.backline.ai/api/webproxy/v1
+        template: templates/worker-configmap.yaml
       - matchRegex:
           path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
           pattern: 'POST "https://app\.backline\.ai/api/adapter/v1/exchange"[\s\S]*GET "https://app\.backline\.ai/api/adapter/v1/ecr/dockerconfig"[\s\S]*GET "https://app\.backline\.ai/api/adapter/v1/langfuse/config"'
@@ -78,6 +86,10 @@ tests:
       - equal:
           path: data.LITELLM_SERVICE_URL
           value: https://staging-app.backline.ai/api/litellm/v1/proxy
+        template: templates/worker-configmap.yaml
+      - equal:
+          path: data.WEB_PROXY_URL
+          value: https://staging-app.backline.ai/api/webproxy/v1
         template: templates/worker-configmap.yaml
       - matchRegex:
           path: spec.jobTemplate.spec.template.spec.containers[0].command[2]
