@@ -141,12 +141,14 @@ tests:
           path: spec.template.spec.containers[?(@.name == "worker")].livenessProbe.httpGet.path
           value: /health
 
-  - it: renders no GitProxy objects by default
+  - it: renders no GitProxy objects when disabled
     templates:
       - templates/gitproxy-deployment.yaml
       - templates/gitproxy-configmap.yaml
       - templates/gitproxy-service.yaml
       - templates/gitproxy-rbac.yaml
+    set:
+      gitproxy.enabled: false
     asserts:
       - hasDocuments:
           count: 0
