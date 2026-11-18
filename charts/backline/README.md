@@ -74,6 +74,7 @@ graph TB
       - [Rust (Cargo/crates.io)](#rust-cargocratesio)
     - [Container Registries](#container-registries)
     - [Source Code Managers](#source-code-managers)
+    - [Web Lookups for Research](#web-lookups-for-research)
     - [LLM API Access](#llm-api-access)
     - [AWS Services](#aws-services)
       - [AWS ECR (Elastic Container Registry)](#aws-ecr-elastic-container-registry)
@@ -174,7 +175,7 @@ helm install backline backline-ai/backline \
 | `customCaCert`      | Base64-encoded PEM CA certificate(s) used for trusted communication with a self-hosted git host (internal/corporate CA). See "Trusting a self-hosted git server's internal CA". | No       | `""`         |
 | `podAnnotations`    | Annotations added to every Backline pod, e.g. Istio sidecar settings. See [Pod Annotations](#pod-annotations)                                                                 | No       | `{}`         |
 
-`baseUrl` re-points everything the installation sends to Backline: the Worker and GitProxy connections, AI model calls and the Janitor's credential refresh. Changing it restarts the Worker and GitProxy. It must be an address in the same Backline environment as the rest of the installation, which pulls its images and ships its logs there; the chart refuses to render when `baseUrl` is not a plain `https://` address (no port or path) or is another environment's default address. For example: `--set baseUrl=https://customerx.backline.ai`.
+`baseUrl` re-points everything the installation sends to Backline: the Worker and GitProxy connections, AI model calls, the web lookups of agentic research and the Janitor's credential refresh. Changing it restarts the Worker and GitProxy. It must be an address in the same Backline environment as the rest of the installation, which pulls its images and ships its logs there; the chart refuses to render when `baseUrl` is not a plain `https://` address (no port or path) or is another environment's default address. For example: `--set baseUrl=https://customerx.backline.ai`.
 
 ### Proxy Configuration
 
@@ -636,7 +637,7 @@ Besides the Backline address, the installation reaches these Backline-operated a
 
 | Purpose | FQDNs | Used by |
 |---------|-------|---------|
-| Backline API, workflow polling, LLM access | `app.backline.ai`, or your `baseUrl` host | worker, gitproxy, janitor, analysis pods |
+| Backline API, workflow polling, LLM access, web lookups for research | `app.backline.ai`, or your `baseUrl` host | worker, gitproxy, janitor, analysis pods |
 | Backline images (`prod-runner`, `prod-gitproxy`, `prod-coder`) | `314146328431.dkr.ecr.us-east-1.amazonaws.com`, `prod-us-east-1-starport-layer-bucket.s3.us-east-1.amazonaws.com` | nodes; janitor (checks for new builds) |
 | Log shipping | `logs.us-east-1.amazonaws.com` | telemetry collector sidecars |
 | Metrics shipping | `aps-workspaces.us-east-1.amazonaws.com` | telemetry collector sidecar (worker) |
@@ -720,6 +721,14 @@ Access to SCM platforms for cloning repositories and fetching code.
 | **Bitbucket** | `bitbucket.org`, `*.bitbucket.org` | 443, 22 | TCP |
 
 > **Note:** Port 22 is required for SSH-based git operations. If your organization uses HTTPS-only, port 443 is sufficient.
+
+### Web Lookups for Research
+
+When Backline researches whether an upgrade changes behavior your code relies on, it reads the package's release notes and documentation: GitHub, the package's own documentation site. Analysis pods do not connect to those sites themselves. Their lookups travel to Backline over the Backline address above, and Backline connects to the site, so no egress rule is needed for them.
+
+- Only these lookups take that route. Installing dependencies, building and testing stay on your cluster's own network, as do the package registries and source code managers listed in this section, your `proxy.noProxy` hosts and your registry integrations.
+- Backline reaches only sites on its allowlist (package registries, source code managers, GitHub, and the official documentation sites of widely used packages), on port 443.
+- The connection to each site is encrypted between the analysis pod and the site: Backline sees which host is contacted and how much data moves, not the content.
 
 ### LLM API Access
 
