@@ -46,3 +46,17 @@ tests:
       - notExists:
           path: metadata.annotations
 
+
+  - it: runs GitProxy by default, since Backline reaches a self-hosted git server only through it
+    template: templates/gitproxy-deployment.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: leaves GitProxy out when disabled
+    template: templates/gitproxy-deployment.yaml
+    set:
+      gitproxy.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

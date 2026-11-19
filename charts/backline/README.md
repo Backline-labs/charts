@@ -31,7 +31,7 @@ graph TB
   AJJR --> PM
 ```
 
-**Chart Version:** 1.7.2
+**Chart Version:** 1.8.0
 **App Version:** 1.1.0
 
 ## Table of Contents
@@ -121,7 +121,7 @@ graph TB
 The chart deploys the following components:
 
 - **Worker**: Main application handling code analysis workloads, AI interactions, and job orchestration
-- **GitProxy** *(optional)*: Enables Backline to work with on-prem git servers (e.g., Bitbucket Data Center) by proxying git API operations. Runs on the customer network and makes outbound-only connections to Backline cloud. Disabled by default
+- **GitProxy**: Enables Backline to work with self-hosted git servers (GitLab Self-Managed, Bitbucket Data Center) by proxying git API operations; Backline reaches such a server only through it. Runs on the customer network and makes outbound-only connections to Backline cloud. Enabled by default
 - **Janitor**: CronJob that performs automated maintenance tasks including JWT token refresh, Docker registry authentication updates, and worker/gitproxy image updates
 - **ADOT Collector**: Sidecar container for exporting logs, traces, and metrics to Backline AI cloud infrastructure. Each log record carries the name of the pod that wrote it (`k8s.pod.name`)
 - **SeaweedFS**: Object storage for static assets and operational data (deployed as a subchart). Can be replaced by your own S3; see [External S3 Storage](#external-s3-storage)
@@ -246,7 +246,7 @@ GitProxy enables Backline to interact with on-prem git servers that are not acce
 
 | Parameter | Description | Default |
 | --- | --- | --- |
-| `gitproxy.enabled` | Enable GitProxy component | `false` |
+| `gitproxy.enabled` | Enable GitProxy component | `true` |
 | `gitproxy.replicaCount` | Number of GitProxy replicas | `1` |
 | `gitproxy.image.name` | Image name | `prod-gitproxy` |
 | `gitproxy.image.tag` | Image tag. Leave empty: the Janitor tracks the newest published build and `helm upgrade` keeps the tag it set. A set tag is applied on each upgrade, not pinned | `""` |
@@ -259,13 +259,15 @@ GitProxy enables Backline to interact with on-prem git servers that are not acce
 | `gitproxy.tolerations` | Tolerations for pod assignment | `[]` |
 | `gitproxy.affinity` | Affinity rules for pod assignment | `{}` |
 
-**Enabling GitProxy:**
+GitProxy is enabled by default, and an upgrade with `--reset-then-reuse-values` turns it on unless your values set `gitproxy.enabled=false`. An installation whose git servers are all public (GitHub, GitLab.com, Bitbucket Cloud) may turn it off; Backline's calls to a self-hosted git server then fail with an error that names GitProxy.
+
+**Disabling GitProxy:**
 
 ```bash
 helm upgrade backline backline-ai/backline \
   --namespace backline \
   --reset-then-reuse-values \
-  --set gitproxy.enabled=true
+  --set gitproxy.enabled=false
 ```
 
 On Helm older than 3.14, see [Upgrading](#upgrading).
@@ -1125,6 +1127,10 @@ helm upgrade backline \
   --namespace backline \
   --values updated-values.yaml
 ```
+
+### Upgrading to 1.8.0
+
+- GitProxy now runs by default (`gitproxy.enabled: true`): Backline reaches a self-hosted git server (GitLab Self-Managed, Bitbucket Data Center) only through it. An upgrade with `--reset-then-reuse-values` starts it unless your values set `gitproxy.enabled=false`. An installation whose git servers are all public may keep it off.
 
 ### Upgrading to 1.7.0
 
